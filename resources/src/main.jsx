@@ -4,8 +4,8 @@ import { BrowserRouter } from 'react-router-dom'
 import { registerSW } from 'virtual:pwa-register'
 import './index.css'
 import App from './App.jsx'
-import { AuthProvider } from './context/AuthContext'
-import { FeaturesProvider } from './context/FeaturesContext'
+import { AuthProvider } from './context/AuthContext.jsx'
+import { FeaturesProvider } from './context/FeaturesContext.jsx'
 
 // Registro manual del service worker: al servir la app desde una vista Blade
 // (no el index.html de Vite), la inyección automática de vite-plugin-pwa no

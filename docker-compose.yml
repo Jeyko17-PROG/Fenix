@@ -1,85 +1,22 @@
-# Stack de producción: nginx (TLS + proxy) -> app (Laravel + Apache + Node
-# para pdf-render) -> db (MySQL). Solo nginx queda expuesto al host; app y db
-# solo son alcanzables dentro de la red interna `logix`.
-
 services:
-  app:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    env_file:
-      - .env
-    depends_on:
-      db:
-        condition: service_healthy
-    volumes:
-      # Persiste lo que Storage::disk('public') genera (PDFs de facturas,
-      # órdenes de compra, recibos) entre reinicios/redeploys.
-      - storage_data:/var/www/html/storage/app/public
-      # Persiste storage/logs/laravel.log: sin esto, cada redeploy borraba
-      # el log y era imposible diagnosticar un error que el usuario reportó
-      # después de un redeploy (el contenedor viejo, con el log, ya no existe).
-      - logs_data:/var/www/html/storage/logs
-    networks:
-      - logix
-
-  db:
+  database:
     image: mysql:8.4
     restart: unless-stopped
+    container_name: database
+    ports:
+      - "3308:3306"
     environment:
       MYSQL_DATABASE: ${DB_DATABASE}
       MYSQL_USER: ${DB_USERNAME}
       MYSQL_PASSWORD: ${DB_PASSWORD}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
     volumes:
       - db_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD}"]
       interval: 5s
       timeout: 5s
       retries: 20
-    networks:
-      - logix
-
-  nginx:
-    image: nginx:1.27-alpine
-    restart: unless-stopped
-    depends_on:
-      - app
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      # Generado por deploy.sh a partir de docker/nginx/app.conf.template
-      # (sustituye __DOMAIN__). No se versiona.
-      - ./docker/nginx/app.conf:/etc/nginx/conf.d/default.conf:ro
-      - certbot_conf:/etc/letsencrypt:ro
-      - certbot_www:/var/www/certbot:ro
-    networks:
-      - logix
-
-  certbot:
-    image: certbot/certbot
-    restart: unless-stopped
-    volumes:
-      - certbot_conf:/etc/letsencrypt
-      - certbot_www:/var/www/certbot
-    # Reintenta la renovación cada 12h (certbot solo renueva de verdad cuando
-    # el certificado está cerca de vencer). deploy.sh maneja la emisión
-    # inicial por separado (ver bootstrap del certificado ahí).
-    entrypoint: >
-      sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done;'
-    networks:
-      - logix
 
 volumes:
   db_data:
-  storage_data:
-  logs_data:
-  certbot_conf:
-  certbot_www:
-
-networks:
-  logix:
-    driver: bridge

@@ -1,5 +1,5 @@
 import { render } from '@react-email/render';
-import CorreoGenerico from './templates/CorreoGenerico.jsx';
+import CorreoGenerico from './email/CorreoGenerico.jsx';
 
 async function readStdin() {
   const chunks = [];

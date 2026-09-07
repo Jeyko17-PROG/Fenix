@@ -7,9 +7,12 @@ use RuntimeException;
 
 /**
  * Renderiza los PDFs (factura, orden de compra, recibo de pago) y el correo
- * genérico desde plantillas React, vía los CLIs compilados en pdf-render/dist
- * (reemplaza a dompdf/Blade; requiere `npm install && npm run build` en
- * pdf-render/ antes de usarse).
+ * genérico desde plantillas React (resources/src/templates/), vía los CLIs que
+ * Vite compila en bootstrap/ssr/ (reemplaza a dompdf/Blade).
+ *
+ * Requiere `npm install && npm run build` antes de usarse: node no ejecuta
+ * .jsx, siempre corre la versión compilada. Las dependencias quedan externas
+ * al bundle, así que en runtime también hace falta node_modules en la raíz.
  */
 class NodeRenderService
 {
@@ -17,18 +20,18 @@ class NodeRenderService
 
     public function __construct()
     {
-        $this->basePath = base_path('pdf-render');
+        $this->basePath = base_path();
     }
 
     /** @param 'factura'|'orden_compra'|'recibo_pago' $template */
     public function pdf(string $template, array $data): string
     {
-        return $this->run('dist/render-pdf.cjs', $data, $template);
+        return $this->run('bootstrap/ssr/render-pdf.js', $data, $template);
     }
 
     public function email(array $data): string
     {
-        return $this->run('dist/render-email.cjs', $data);
+        return $this->run('bootstrap/ssr/render-email.js', $data);
     }
 
     private function run(string $script, array $data, ?string $template = null): string

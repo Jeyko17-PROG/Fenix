@@ -14,6 +14,9 @@
 /.zed
 /auth.json
 /node_modules
+# Plantillas de PDF/correo compiladas por `vite build --ssr` (las ejecuta node
+# desde App\Services\NodeRenderService); se regeneran en cada build.
+/bootstrap/ssr
 /public/build
 /public/fonts-manifest.dev.json
 /public/hot

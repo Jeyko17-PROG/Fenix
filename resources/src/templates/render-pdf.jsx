@@ -1,7 +1,7 @@
 import { renderToBuffer } from '@react-pdf/renderer';
-import Factura from './templates/Factura.jsx';
-import OrdenCompra from './templates/OrdenCompra.jsx';
-import ReciboPago from './templates/ReciboPago.jsx';
+import Factura from './pdf/Factura.jsx';
+import OrdenCompra from './pdf/OrdenCompra.jsx';
+import ReciboPago from './pdf/ReciboPago.jsx';
 
 const TEMPLATES = {
   factura: Factura,

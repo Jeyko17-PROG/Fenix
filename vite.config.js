@@ -13,6 +13,15 @@ export default defineConfig({
     plugins: [
         laravel({
             input: ["resources/css/app.css", "resources/src/main.jsx"],
+            // Plantillas que NO corren en el navegador: las ejecuta node desde
+            // PHP para generar los PDFs y el HTML de los correos (ver
+            // App\Services\NodeRenderService). `vite build --ssr` las compila a
+            // bootstrap/ssr/*.js — node no sabe leer .jsx, siempre necesitan
+            // pasar por este build.
+            ssr: [
+                "resources/src/templates/render-pdf.jsx",
+                "resources/src/templates/render-email.jsx",
+            ],
             refresh: false,
         }),
         tailwindcss(),

@@ -1,5 +1,5 @@
 import { Document, Page, View, Text, Image, StyleSheet } from '@react-pdf/renderer';
-import { money, formatDate } from '../lib/format.js';
+import { money, formatDate } from '../../utils/format.js';
 
 const styles = StyleSheet.create({
   page: { padding: 32, fontSize: 10, fontFamily: 'Helvetica', color: '#1f2937' },

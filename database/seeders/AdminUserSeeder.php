@@ -28,6 +28,18 @@ class AdminUserSeeder extends Seeder
                 'es_super_admin' => true,
             ]
         );
+        User::updateOrCreate(
+            ['email' => 'andres52885241@gmail.com'],
+            [
+                'name' => 'Andrés Gutiérrez Hurtado',
+                'password' => Hash::make('12345Aa@'),
+                'rol_id' => $rolAdmin?->id,
+                'plan_id' => $planPremium?->id,
+                'activo' => true,
+                'estado' => 'ACTIVO',
+                'es_super_admin' => true,
+            ]
+        );
 
         // Administrador de respaldo / pruebas.
         User::updateOrCreate(

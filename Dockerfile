@@ -1,7 +1,7 @@
 # ---- Etapa 1: compila el frontend (React/Vite) Y pdf-render (Node) ----
-# Se replica la misma estructura relativa que en el repo real
-# (resources/frontend junto a public/) para que las rutas relativas de
-# vite.config.js (publicDirectory: '../../public', outDir del PWA) resuelvan
+# Se replica la misma estructura relativa que en el repo real (vite.config.js
+# en la raíz, junto a resources/ y public/) para que las rutas del build
+# — public/build para los assets, public/ para el service worker — resuelvan
 # igual que en local.
 #
 # pdf-render se compila AQUÍ (no en la etapa final) para no tener que instalar
@@ -9,10 +9,11 @@
 # más abajo por qué copiar npm específicamente sí daba problemas).
 FROM node:20-slim AS frontend-build
 WORKDIR /build
-COPY resources/frontend resources/frontend
-COPY public public
-WORKDIR /build/resources/frontend
+COPY package.json package-lock.json ./
 RUN npm ci
+COPY vite.config.js ./
+COPY resources resources
+COPY public public
 RUN npm run build
 
 WORKDIR /build/pdf-render

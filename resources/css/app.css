@@ -1,6 +1,14 @@
 @import 'tailwindcss';
 
 /*
+ * Dónde buscar las clases a generar. Se declara explícitamente porque este
+ * archivo ya no vive junto al código de React (antes era resources/src/index.css):
+ * sin esto, la detección automática de Tailwind v4 depende de desde dónde se
+ * ejecute el build, y podría escanear todo el repo (vendor/, storage/...).
+ */
+@source '../src';
+
+/*
  * Paleta de marca Fénix: redefine la escala "emerald" (usada como color
  * primario/CTA en TODA la plataforma) por el degradado de fuego del logo
  * (rojo-naranja -> ámbar) y afina "sky" hacia el azul-hielo del ala.

@@ -6,24 +6,22 @@ import laravel from 'laravel-vite-plugin'
 
 // https://vite.dev/config/
 export default defineConfig({
-  // Los íconos/PWA assets ya no viven en una carpeta public/ propia de este
-  // proyecto: se movieron directo a backend/public/ (la raíz real del sitio
-  // servida por Apache), así que no hay nada que Vite deba copiar aquí.
+  // public/ es la raíz real del sitio que sirve Laravel/Apache, no una carpeta
+  // de assets estáticos que Vite deba copiar al build: se desactiva para que
+  // Vite no intente duplicar su contenido dentro de public/build.
   publicDir: false,
   server: {
     port: 5173,
     host: true, // expone el servidor en la red local (LAN) para abrir desde el celular vía IP
   },
   plugins: [
-    // Integra este Vite con Laravel: compila a backend/public/build y expone
-    // el helper @vite() para resources/views/app.blade.php. En dev, Laravel
-    // sirve la página y este plugin inyecta el cliente HMR del server de Vite
-    // (ya no hace falta el proxy manual de /api ni /storage: al correr todo
-    // bajo el mismo dominio de Laravel, esas rutas ya son del propio backend).
+    // Integra Vite con Laravel: compila a public/build y habilita los helpers
+    // @vite()/@viteReactRefresh de Blade (ver resources/views/welcome.blade.php).
+    // En dev, Laravel sirve la página y este plugin inyecta el cliente HMR del
+    // servidor de Vite — todo bajo el mismo dominio, así que /api y /storage
+    // son rutas del propio backend y no hace falta ningún proxy.
     laravel({
-      input: ['src/main.jsx'],
-      publicDirectory: '../../public',
-      buildDirectory: 'build',
+      input: ['resources/css/app.css', 'resources/src/main.jsx'],
       refresh: true,
     }),
     react(),
@@ -34,12 +32,18 @@ export default defineConfig({
       // un Blade template, no el index.html de Vite, así que la inyección
       // automática de <script>/<link> de este plugin no tiene efecto.
       injectRegister: false,
-      // El service worker debe quedar en la RAÍZ del sitio (backend/public/),
-      // no dentro de public/build/, para que su alcance ("scope") cubra toda
-      // la app y no solo la carpeta de assets.
-      outDir: '../../public',
-      // Ya no hace falta includeAssets: los íconos viven permanentemente en
-      // backend/public/ (ver publicDir arriba), no dependen del build de Vite.
+      // El service worker y el manifest deben quedar en la RAÍZ del sitio
+      // (public/), no dentro de public/build/, para que su alcance ("scope")
+      // cubra toda la app y no solo la carpeta de assets.
+      outDir: 'public',
+      // Sin esto, workbox tomaría outDir (= public/) como directorio a
+      // precachear y arrastraría los íconos, imágenes y hasta public/storage
+      // (archivos subidos por usuarios). Solo interesan los assets con hash
+      // que genera el build.
+      workbox: {
+        globDirectory: 'public',
+        globPatterns: ['build/**/*.{js,css,woff2}'],
+      },
       manifest: {
         name: 'Fénix · Velocidad y eficiencia en tu punto de venta',
         short_name: 'Fénix',

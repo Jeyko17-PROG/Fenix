@@ -39,6 +39,7 @@ class NodeRenderService
         $args = array_values(array_filter(['node', $script, $template]));
 
         $result = Process::path($this->basePath)
+            ->env($this->entornoSistema())
             ->timeout(20)
             ->input(json_encode($data))
             ->run($args);
@@ -50,5 +51,36 @@ class NodeRenderService
         }
 
         return $result->output();
+    }
+
+    /**
+     * Variables del sistema que Node necesita para arrancar.
+     *
+     * Symfony Process arma el entorno del hijo intersecando getenv() con
+     * $_SERVER, y usa $_ENV como respaldo. Con `variables_order` sin "E" (el
+     * valor por defecto de php.ini) $_ENV llega vacio, y bajo un SAPI web
+     * ($_SERVER son las variables de la peticion, no las del sistema) esa
+     * interseccion se queda sin SystemRoot: Node aborta al iniciar con
+     * "Assertion failed: ncrypto::CSPRNG(nullptr, 0)" porque OpenSSL no puede
+     * sembrar el generador aleatorio. Por CLI si funciona, de ahi que fallara
+     * solo desde el navegador. Se las devolvemos explicitamente.
+     */
+    private function entornoSistema(): array
+    {
+        $claves = [
+            'SystemRoot', 'windir', 'SystemDrive', 'ComSpec', 'PATHEXT', // Windows
+            'PATH', 'TEMP', 'TMP', 'TMPDIR', 'HOME', 'USERPROFILE',
+            'APPDATA', 'LOCALAPPDATA', 'NUMBER_OF_PROCESSORS',
+        ];
+
+        $entorno = [];
+        foreach ($claves as $clave) {
+            $valor = getenv($clave);
+            if ($valor !== false) {
+                $entorno[$clave] = $valor;
+            }
+        }
+
+        return $entorno;
     }
 }

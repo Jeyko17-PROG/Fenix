@@ -1,6 +1,6 @@
 <?php
 
-use App\Models\User;
+use App\IAM\Infrastructure\Persistence\Eloquent\User;
 
 return [
 

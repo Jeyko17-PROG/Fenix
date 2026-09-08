@@ -2,8 +2,8 @@
 
 namespace Database\Seeders;
 
-use App\Models\TipoNegocio;
-use App\Support\Funcionalidades;
+use App\Business\Infrastructure\Persistence\Eloquent\TipoNegocio;
+use App\IAM\Application\Funcionalidades;
 use Illuminate\Database\Seeder;
 
 /**

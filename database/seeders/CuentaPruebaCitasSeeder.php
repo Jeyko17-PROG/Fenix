@@ -2,13 +2,13 @@
 
 namespace Database\Seeders;
 
-use App\Models\Cita;
-use App\Models\Cliente;
-use App\Models\Empresa;
-use App\Models\Plan;
-use App\Models\Role;
-use App\Models\TipoNegocio;
-use App\Models\User;
+use App\Operations\Infrastructure\Persistence\Eloquent\Cita;
+use App\Operations\Infrastructure\Persistence\Eloquent\Cliente;
+use App\Business\Infrastructure\Persistence\Eloquent\Empresa;
+use App\IAM\Infrastructure\Persistence\Eloquent\Plan;
+use App\IAM\Infrastructure\Persistence\Eloquent\Role;
+use App\Business\Infrastructure\Persistence\Eloquent\TipoNegocio;
+use App\IAM\Infrastructure\Persistence\Eloquent\User;
 use Carbon\Carbon;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;

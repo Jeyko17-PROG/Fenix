@@ -1,6 +1,6 @@
 <?php
 
-use App\Support\BackfillEmpresas;
+use App\Business\Application\BackfillEmpresas;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\Log;
 

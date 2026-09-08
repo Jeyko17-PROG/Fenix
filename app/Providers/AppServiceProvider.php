@@ -2,7 +2,7 @@
 
 namespace App\Providers;
 
-use App\Mail\Transport\BrevoApiTransport;
+use App\Shared\Infrastructure\Mail\Transport\BrevoApiTransport;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
@@ -35,7 +35,7 @@ class AppServiceProvider extends ServiceProvider
             return new BrevoApiTransport((string) config('services.brevo.key'));
         });
         Mail::extend('gmail-api', function () {
-            return new \App\Mail\Transport\GmailApiTransport();
+            return new \App\Shared\Infrastructure\Mail\Transport\GmailApiTransport();
         });
 
         // Selección automática del mejor transporte disponible, sin tocar MAIL_MAILER:
@@ -43,7 +43,7 @@ class AppServiceProvider extends ServiceProvider
         //   2. Brevo (si hay BREVO_API_KEY)
         //   3. lo que diga MAIL_MAILER (smtp/log)
         try {
-            if (\App\Mail\Transport\GmailApiTransport::configurado()) {
+            if (\App\Shared\Infrastructure\Mail\Transport\GmailApiTransport::configurado()) {
                 config(['mail.default' => 'gmail']);
             } elseif (config('services.brevo.key') && config('mail.default') !== 'brevo') {
                 config(['mail.default' => 'brevo']);

@@ -2,9 +2,9 @@
 
 namespace Database\Seeders;
 
-use App\Models\Plan;
-use App\Models\Role;
-use App\Models\User;
+use App\IAM\Infrastructure\Persistence\Eloquent\Plan;
+use App\IAM\Infrastructure\Persistence\Eloquent\Role;
+use App\IAM\Infrastructure\Persistence\Eloquent\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
@@ -56,6 +56,6 @@ class AdminUserSeeder extends Seeder
 
         // En BD nueva los seeders corren después de las migraciones: el backfill
         // crea aquí las empresas de los usuarios sembrados (es idempotente).
-        \App\Support\BackfillEmpresas::run();
+        \App\Business\Application\BackfillEmpresas::run();
     }
 }

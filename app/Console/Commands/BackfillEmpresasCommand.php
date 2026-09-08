@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Support\BackfillEmpresas;
+use App\Business\Application\BackfillEmpresas;
 use Illuminate\Console\Command;
 
 class BackfillEmpresasCommand extends Command

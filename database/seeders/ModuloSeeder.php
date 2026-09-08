@@ -2,8 +2,8 @@
 
 namespace Database\Seeders;
 
-use App\Models\Modulo;
-use App\Support\Funcionalidades;
+use App\IAM\Infrastructure\Persistence\Eloquent\Modulo;
+use App\IAM\Application\Funcionalidades;
 use Illuminate\Database\Seeder;
 
 /**

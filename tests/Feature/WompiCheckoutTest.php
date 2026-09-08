@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Services\WompiService;
+use App\Billing\Infrastructure\Integrations\WompiService;
 use Tests\TestCase;
 
 class WompiCheckoutTest extends TestCase

@@ -2,10 +2,10 @@
 
 namespace Tests\Feature;
 
-use App\Models\Bodega;
-use App\Models\Factura;
-use App\Models\Role;
-use App\Models\User;
+use App\Business\Infrastructure\Persistence\Eloquent\Bodega;
+use App\Billing\Infrastructure\Persistence\Eloquent\Factura;
+use App\IAM\Infrastructure\Persistence\Eloquent\Role;
+use App\IAM\Infrastructure\Persistence\Eloquent\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 

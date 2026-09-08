@@ -3,7 +3,7 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
-use App\Models\CreditPackage;
+use App\Billing\Infrastructure\Persistence\Eloquent\CreditPackage;
 
 class CreditPackagesSeeder extends Seeder
 {

@@ -2,8 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Empresa;
-use App\Services\Notificador;
+use App\Business\Infrastructure\Persistence\Eloquent\Empresa;
+use App\Shared\Application\Notificador;
 use Illuminate\Console\Command;
 
 /**

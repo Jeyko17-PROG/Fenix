@@ -17,14 +17,14 @@ return Application::configure(basePath: dirname(__DIR__))
         // Normaliza números en formato colombiano (400.000 -> 400000) en campos
         // monetarios de TODA la API, antes de validar.
         $middleware->api(append: [
-            \App\Http\Middleware\NormalizarNumerosLocales::class,
+            \App\Shared\Http\Middleware\NormalizarNumerosLocales::class,
         ]);
 
         $middleware->alias([
-            'role' => \App\Http\Middleware\EnsureUserHasRole::class,
-            'superadmin' => \App\Http\Middleware\EnsureSuperAdmin::class,
-            'feature' => \App\Http\Middleware\CheckFeature::class,
-            'membresia' => \App\Http\Middleware\VerificarMembresia::class,
+            'role' => \App\IAM\Http\Middleware\EnsureUserHasRole::class,
+            'superadmin' => \App\IAM\Http\Middleware\EnsureSuperAdmin::class,
+            'feature' => \App\IAM\Http\Middleware\CheckFeature::class,
+            'membresia' => \App\Billing\Http\Middleware\VerificarMembresia::class,
         ]);
 
         // Evita que las peticiones de la API o del navegador hacia rutas protegidas

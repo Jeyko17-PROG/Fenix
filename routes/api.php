@@ -1,37 +1,37 @@
 <?php
 
-use App\Http\Controllers\AdjuntoController;
-use App\Http\Controllers\AssetVehicleController;
-use App\Http\Controllers\AuthController;
-use App\Http\Controllers\BodegaController;
-use App\Http\Controllers\CategoriaController;
-use App\Http\Controllers\CitaController;
-use App\Http\Controllers\ClienteController;
-use App\Http\Controllers\ConfiguracionAgendaController;
-use App\Http\Controllers\CuentaController;
-use App\Http\Controllers\GaleriaController;
-use App\Http\Controllers\DocumentoController;
-use App\Http\Controllers\ExtraccionController;
-use App\Http\Controllers\FacturaController;
-use App\Http\Controllers\MetodoPagoCobroController;
-use App\Http\Controllers\FeatureController;
-use App\Http\Controllers\FirmaController;
-use App\Http\Controllers\NotaController;
-use App\Http\Controllers\NotificacionController;
-use App\Http\Controllers\InventarioController;
-use App\Http\Controllers\OperablesEmployeeController;
-use App\Http\Controllers\OrdenCompraController;
-use App\Http\Controllers\PortalController;
-use App\Http\Controllers\PlanController;
-use App\Http\Controllers\ProductoController;
-use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\ProveedorController;
-use App\Http\Controllers\ReportController;
-use App\Http\Controllers\ReporteController;
-use App\Http\Controllers\ServicioController;
-use App\Http\Controllers\PlanLavadoController;
-use App\Http\Controllers\ServiceOrderController;
-use App\Http\Controllers\UsuarioAdminController;
+use App\Shared\Http\Controllers\AdjuntoController;
+use App\Operations\Http\Controllers\AssetVehicleController;
+use App\IAM\Http\Controllers\AuthController;
+use App\Business\Http\Controllers\BodegaController;
+use App\Operations\Http\Controllers\CategoriaController;
+use App\Operations\Http\Controllers\CitaController;
+use App\Operations\Http\Controllers\ClienteController;
+use App\Operations\Http\Controllers\ConfiguracionAgendaController;
+use App\IAM\Http\Controllers\CuentaController;
+use App\Shared\Http\Controllers\GaleriaController;
+use App\Shared\Http\Controllers\DocumentoController;
+use App\Operations\Http\Controllers\ExtraccionController;
+use App\Billing\Http\Controllers\FacturaController;
+use App\Billing\Http\Controllers\MetodoPagoCobroController;
+use App\IAM\Http\Controllers\FeatureController;
+use App\Shared\Http\Controllers\FirmaController;
+use App\Shared\Http\Controllers\NotaController;
+use App\Shared\Http\Controllers\NotificacionController;
+use App\Operations\Http\Controllers\InventarioController;
+use App\Business\Http\Controllers\OperablesEmployeeController;
+use App\Operations\Http\Controllers\OrdenCompraController;
+use App\Operations\Http\Controllers\PortalController;
+use App\IAM\Http\Controllers\PlanController;
+use App\Operations\Http\Controllers\ProductoController;
+use App\IAM\Http\Controllers\ProfileController;
+use App\Operations\Http\Controllers\ProveedorController;
+use App\Operations\Http\Controllers\ReportController;
+use App\Shared\Http\Controllers\ReporteController;
+use App\Operations\Http\Controllers\ServicioController;
+use App\Operations\Http\Controllers\PlanLavadoController;
+use App\Operations\Http\Controllers\ServiceOrderController;
+use App\IAM\Http\Controllers\UsuarioAdminController;
 use Illuminate\Support\Facades\Route;
 
 // --- Salud / prueba de conexión ---
@@ -47,7 +47,7 @@ Route::get('/ping', function () {
     }
 
     // Verificación del comercio en Wompi (cacheada 10 min, solo booleanos).
-    $wompi = app(\App\Services\WompiService::class);
+    $wompi = app(\App\Billing\Infrastructure\Integrations\WompiService::class);
     $comercio = $wompi->configurado() ? $wompi->verificarComercio() : null;
 
     // Cola de correos: si "pendientes" crece y nunca baja, el worker no está corriendo.
@@ -80,7 +80,7 @@ Route::get('/ping', function () {
             },
             'gmail_api' => [
                 'credenciales' => ! empty(config('services.gmail.client_id')) && ! empty(config('services.gmail.client_secret')),
-                'autorizado' => \App\Mail\Transport\GmailApiTransport::configurado(),
+                'autorizado' => \App\Shared\Infrastructure\Mail\Transport\GmailApiTransport::configurado(),
             ],
             'wompi_configurada' => $wompi->configurado() && ! empty(config('services.wompi.integrity_secret')),
             'wompi_comercio_valido' => $comercio['ok'] ?? null,
@@ -96,7 +96,7 @@ Route::get('/ping', function () {
 // --- Autenticación (público) ---
 // Catálogo de tipos de negocio para el formulario de registro.
 Route::get('/tipos-negocio', function () {
-    return \App\Models\TipoNegocio::where('activo', true)
+    return \App\Business\Infrastructure\Persistence\Eloquent\TipoNegocio::where('activo', true)
         ->orderBy('orden')
         ->get(['id', 'clave', 'nombre', 'descripcion']);
 });
@@ -152,12 +152,12 @@ Route::middleware(['auth:sanctum', 'membresia'])->group(function () {
     // Catálogo de planes (visible para usuarios autenticados: dashboard, "actualizar plan")
     Route::get('/planes', [PlanController::class, 'index']);
     // Pago/renovación de la membresía mensual (checkout Wompi: PSE, Nequi, tarjeta)
-    Route::post('/planes/{plan}/checkout', [App\Http\Controllers\CreditController::class, 'createPlanSession']);
+    Route::post('/planes/{plan}/checkout', [App\Billing\Http\Controllers\CreditController::class, 'createPlanSession']);
 
     // Crédito por uso (paquetes y saldo)
-    Route::get('/credit-packages', [App\Http\Controllers\CreditController::class, 'indexPackages']);
-    Route::get('/credits', [App\Http\Controllers\CreditController::class, 'myCredits']);
-    Route::post('/credits/create-session', [App\Http\Controllers\CreditController::class, 'createSession']);
+    Route::get('/credit-packages', [App\Billing\Http\Controllers\CreditController::class, 'indexPackages']);
+    Route::get('/credits', [App\Billing\Http\Controllers\CreditController::class, 'myCredits']);
+    Route::post('/credits/create-session', [App\Billing\Http\Controllers\CreditController::class, 'createSession']);
 
     // Funcionalidades del usuario autenticado (el frontend oculta/restringe módulos)
     Route::get('/mis-funcionalidades', [FeatureController::class, 'mias']);
@@ -191,22 +191,22 @@ Route::middleware(['auth:sanctum', 'membresia'])->group(function () {
         Route::get('licencias', [UsuarioAdminController::class, 'licencias']);
 
         // ===== Multiempresa: gestión de EMPRESAS (tenants) =====
-        Route::get('empresas', [App\Http\Controllers\Admin\EmpresaAdminController::class, 'index']);
-        Route::put('empresas/{empresa}', [App\Http\Controllers\Admin\EmpresaAdminController::class, 'update']);
-        Route::post('empresas/{empresa}/estado', [App\Http\Controllers\Admin\EmpresaAdminController::class, 'cambiarEstado']);
-        Route::post('empresas/{empresa}/plan', [App\Http\Controllers\Admin\EmpresaAdminController::class, 'cambiarPlan']);
-        Route::post('empresas/{empresa}/limite', [App\Http\Controllers\Admin\EmpresaAdminController::class, 'cambiarLimite']);
-        Route::post('empresas/{empresa}/membresia', [App\Http\Controllers\Admin\EmpresaAdminController::class, 'cambiarMembresia']);
-        Route::post('empresas/{empresa}/modo-cobro', [App\Http\Controllers\Admin\EmpresaAdminController::class, 'cambiarModoCobro']);
-        Route::post('empresas/{empresa}/regenerar-codigo', [App\Http\Controllers\Admin\EmpresaAdminController::class, 'regenerarCodigoActivacion']);
-        Route::post('empresas/{empresa}/enviar-codigo', [App\Http\Controllers\Admin\EmpresaAdminController::class, 'enviarCodigoActivacion']);
-        Route::get('empresas/{empresa}/modulos', [App\Http\Controllers\Admin\EmpresaAdminController::class, 'modulos']);
-        Route::put('empresas/{empresa}/modulos', [App\Http\Controllers\Admin\EmpresaAdminController::class, 'guardarModulos']);
-        Route::post('empresas/{empresa}/modulos/aplicar-plan', [App\Http\Controllers\Admin\EmpresaAdminController::class, 'aplicarPlanModulos']);
+        Route::get('empresas', [App\Business\Http\Controllers\Admin\EmpresaAdminController::class, 'index']);
+        Route::put('empresas/{empresa}', [App\Business\Http\Controllers\Admin\EmpresaAdminController::class, 'update']);
+        Route::post('empresas/{empresa}/estado', [App\Business\Http\Controllers\Admin\EmpresaAdminController::class, 'cambiarEstado']);
+        Route::post('empresas/{empresa}/plan', [App\Business\Http\Controllers\Admin\EmpresaAdminController::class, 'cambiarPlan']);
+        Route::post('empresas/{empresa}/limite', [App\Business\Http\Controllers\Admin\EmpresaAdminController::class, 'cambiarLimite']);
+        Route::post('empresas/{empresa}/membresia', [App\Business\Http\Controllers\Admin\EmpresaAdminController::class, 'cambiarMembresia']);
+        Route::post('empresas/{empresa}/modo-cobro', [App\Business\Http\Controllers\Admin\EmpresaAdminController::class, 'cambiarModoCobro']);
+        Route::post('empresas/{empresa}/regenerar-codigo', [App\Business\Http\Controllers\Admin\EmpresaAdminController::class, 'regenerarCodigoActivacion']);
+        Route::post('empresas/{empresa}/enviar-codigo', [App\Business\Http\Controllers\Admin\EmpresaAdminController::class, 'enviarCodigoActivacion']);
+        Route::get('empresas/{empresa}/modulos', [App\Business\Http\Controllers\Admin\EmpresaAdminController::class, 'modulos']);
+        Route::put('empresas/{empresa}/modulos', [App\Business\Http\Controllers\Admin\EmpresaAdminController::class, 'guardarModulos']);
+        Route::post('empresas/{empresa}/modulos/aplicar-plan', [App\Business\Http\Controllers\Admin\EmpresaAdminController::class, 'aplicarPlanModulos']);
 
         // Catálogo de tipos de negocio (módulos por tipo)
-        Route::get('tipos-negocio', [App\Http\Controllers\Admin\EmpresaAdminController::class, 'tiposNegocio']);
-        Route::post('tipos-negocio', [App\Http\Controllers\Admin\EmpresaAdminController::class, 'guardarTipoNegocio']);
+        Route::get('tipos-negocio', [App\Business\Http\Controllers\Admin\EmpresaAdminController::class, 'tiposNegocio']);
+        Route::post('tipos-negocio', [App\Business\Http\Controllers\Admin\EmpresaAdminController::class, 'guardarTipoNegocio']);
 
         // Conectar la cuenta Gmail (OAuth) para enviar correos por la API HTTP.
         // Devuelve la URL de consentimiento de Google; el super-admin la abre y autoriza.
@@ -435,18 +435,18 @@ Route::middleware(['auth:sanctum', 'membresia'])->group(function () {
 
     // ===== BLOQUE RESTAURANTE: Plano de mesas, comandas y cocina (KDS) =====
     Route::middleware('feature:mesas')->group(function () {
-        Route::apiResource('mesas', \App\Http\Controllers\MesaController::class)->except('show');
-        Route::post('mesas/{mesa}/comanda', [\App\Http\Controllers\ComandaController::class, 'abrir']);
-        Route::get('comandas/{comanda}', [\App\Http\Controllers\ComandaController::class, 'show']);
-        Route::post('comandas/{comanda}/items', [\App\Http\Controllers\ComandaController::class, 'agregarItem']);
-        Route::delete('comandas/{comanda}/items/{item}', [\App\Http\Controllers\ComandaController::class, 'quitarItem']);
-        Route::post('comandas/{comanda}/cobrar', [\App\Http\Controllers\ComandaController::class, 'cobrar']);
-        Route::post('comandas/{comanda}/cancelar', [\App\Http\Controllers\ComandaController::class, 'cancelar']);
+        Route::apiResource('mesas', \App\Operations\Http\Controllers\MesaController::class)->except('show');
+        Route::post('mesas/{mesa}/comanda', [\App\Operations\Http\Controllers\ComandaController::class, 'abrir']);
+        Route::get('comandas/{comanda}', [\App\Operations\Http\Controllers\ComandaController::class, 'show']);
+        Route::post('comandas/{comanda}/items', [\App\Operations\Http\Controllers\ComandaController::class, 'agregarItem']);
+        Route::delete('comandas/{comanda}/items/{item}', [\App\Operations\Http\Controllers\ComandaController::class, 'quitarItem']);
+        Route::post('comandas/{comanda}/cobrar', [\App\Operations\Http\Controllers\ComandaController::class, 'cobrar']);
+        Route::post('comandas/{comanda}/cancelar', [\App\Operations\Http\Controllers\ComandaController::class, 'cancelar']);
     });
     // Cocina (KDS): pantalla dedicada, feature separada (puede asignarse solo al personal de cocina).
     Route::middleware('feature:cocina')->group(function () {
-        Route::get('cocina/comandas', [\App\Http\Controllers\ComandaController::class, 'cocina']);
-        Route::put('cocina/items/{item}/estado', [\App\Http\Controllers\ComandaController::class, 'estadoItem']);
+        Route::get('cocina/comandas', [\App\Operations\Http\Controllers\ComandaController::class, 'cocina']);
+        Route::put('cocina/items/{item}/estado', [\App\Operations\Http\Controllers\ComandaController::class, 'estadoItem']);
     });
 
     // ===== BLOQUE E: Bloc de notas =====
@@ -455,16 +455,16 @@ Route::middleware(['auth:sanctum', 'membresia'])->group(function () {
     // ===== POS: Caja (apertura/cierre con arqueo) y Gastos diarios =====
     // El rol Mecanico no maneja dinero: queda excluido por rol.
     Route::middleware('role:Administrador,Usuario,Ventas/Compras,Empleado,Almacenista')->group(function () {
-        Route::get('caja/sesiones', [App\Http\Controllers\CajaController::class, 'index']);
-        Route::get('caja/actual', [App\Http\Controllers\CajaController::class, 'actual']);
-        Route::post('caja/abrir', [App\Http\Controllers\CajaController::class, 'abrir']);
-        Route::post('caja/ingresos', [App\Http\Controllers\CajaController::class, 'storeIngreso']);
-        Route::post('caja/{sesion}/cerrar', [App\Http\Controllers\CajaController::class, 'cerrar']);
+        Route::get('caja/sesiones', [App\Billing\Http\Controllers\CajaController::class, 'index']);
+        Route::get('caja/actual', [App\Billing\Http\Controllers\CajaController::class, 'actual']);
+        Route::post('caja/abrir', [App\Billing\Http\Controllers\CajaController::class, 'abrir']);
+        Route::post('caja/ingresos', [App\Billing\Http\Controllers\CajaController::class, 'storeIngreso']);
+        Route::post('caja/{sesion}/cerrar', [App\Billing\Http\Controllers\CajaController::class, 'cerrar']);
 
-        Route::get('gastos', [App\Http\Controllers\GastoController::class, 'index']);
-        Route::post('gastos', [App\Http\Controllers\GastoController::class, 'store']);
-        Route::delete('gastos/{gasto}', [App\Http\Controllers\GastoController::class, 'destroy']);
-        Route::get('reportes/utilidad-dia', [App\Http\Controllers\GastoController::class, 'utilidadDia']);
+        Route::get('gastos', [App\Billing\Http\Controllers\GastoController::class, 'index']);
+        Route::post('gastos', [App\Billing\Http\Controllers\GastoController::class, 'store']);
+        Route::delete('gastos/{gasto}', [App\Billing\Http\Controllers\GastoController::class, 'destroy']);
+        Route::get('reportes/utilidad-dia', [App\Billing\Http\Controllers\GastoController::class, 'utilidadDia']);
 
         // Fidelización: historial del cliente por placa o cédula en el POS.
         Route::get('pos/historial-cliente', [ClienteController::class, 'historialPos']);
@@ -498,7 +498,7 @@ Route::get('gmail/callback', function (Illuminate\Http\Request $request) {
         )->header('Content-Type', 'text/html; charset=utf-8');
     }
 
-    Illuminate\Support\Facades\Cache::forever(\App\Mail\Transport\GmailApiTransport::CACHE_REFRESH_TOKEN, $res->json('refresh_token'));
+    Illuminate\Support\Facades\Cache::forever(\App\Shared\Infrastructure\Mail\Transport\GmailApiTransport::CACHE_REFRESH_TOKEN, $res->json('refresh_token'));
     Illuminate\Support\Facades\Cache::forget('gmail_access_token');
 
     return response(
@@ -508,4 +508,4 @@ Route::get('gmail/callback', function (Illuminate\Http\Request $request) {
 });
 
 // Public webhooks for payment providers (no auth). Protect with provider signature in production.
-Route::post('webhooks/payments/{provider}', [\App\Http\Controllers\PaymentWebhookController::class, 'handle']);
+Route::post('webhooks/payments/{provider}', [\App\Billing\Http\Controllers\PaymentWebhookController::class, 'handle']);

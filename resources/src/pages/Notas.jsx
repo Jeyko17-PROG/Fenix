@@ -1,22 +1,33 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
+import { useDialogo } from '../context/DialogoContext'
+import { useToast } from '../context/ToastContext'
 
 export default function Notas() {
   const [notas, setNotas] = useState([])
   const [activa, setActiva] = useState(null)
   const [guardado, setGuardado] = useState('')
+  const [error, setError] = useState('')
   const timer = useRef(null)
+  const { confirmar } = useDialogo()
+  const toast = useToast()
 
   async function cargar() {
-    const data = await api('/notas')
-    setNotas(data)
+    try {
+      const data = await api('/notas')
+      setNotas(data)
+    } catch (err) {
+      setError(err.message || 'No se pudieron cargar las notas. Verifica que tu plan lo incluya.')
+    }
   }
   useEffect(() => { cargar() }, [])
 
   async function nueva() {
-    const n = await api('/notas', { method: 'POST', body: { titulo: 'Nueva nota', contenido: '' } })
-    await cargar()
-    setActiva(n)
+    try {
+      const n = await api('/notas', { method: 'POST', body: { titulo: 'Nueva nota', contenido: '' } })
+      await cargar()
+      setActiva(n)
+    } catch (err) { toast.error(err.message || 'No se pudo crear la nota.') }
   }
 
   // Autosave: guarda 800ms después de dejar de escribir.
@@ -26,17 +37,25 @@ export default function Notas() {
     setGuardado('Guardando…')
     clearTimeout(timer.current)
     timer.current = setTimeout(async () => {
-      await api(`/notas/${actualizada.id}`, { method: 'PUT', body: { titulo: actualizada.titulo, contenido: actualizada.contenido } })
-      setGuardado('Guardado ✓')
-      cargar()
+      try {
+        await api(`/notas/${actualizada.id}`, { method: 'PUT', body: { titulo: actualizada.titulo, contenido: actualizada.contenido } })
+        setGuardado('Guardado ✓')
+        cargar()
+      } catch (err) {
+        setGuardado('')
+        toast.error(err.message || 'No se pudo guardar la nota.')
+      }
     }, 800)
   }
 
   async function eliminar(id) {
-    if (!confirm('¿Eliminar nota?')) return
-    await api(`/notas/${id}`, { method: 'DELETE' })
-    if (activa?.id === id) setActiva(null)
-    cargar()
+    const ok = await confirmar({ titulo: 'Eliminar nota', mensaje: '¿Eliminar esta nota?', confirmarTexto: 'Eliminar', peligroso: true })
+    if (!ok) return
+    try {
+      await api(`/notas/${id}`, { method: 'DELETE' })
+      if (activa?.id === id) setActiva(null)
+      cargar()
+    } catch (err) { toast.error(err.message || 'No se pudo eliminar la nota.') }
   }
 
   return (
@@ -45,6 +64,10 @@ export default function Notas() {
         <h1 className="text-2xl font-bold">Bloc de Notas</h1>
         <button onClick={nueva} className="rounded-lg bg-emerald-600 hover:bg-emerald-500 px-4 py-2 text-sm font-semibold">+ Nueva nota</button>
       </div>
+
+      {notas.length === 0 && error && (
+        <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm text-red-300">{error}</div>
+      )}
 
       <div className="grid md:grid-cols-3 gap-4">
         <div className="md:col-span-1 space-y-2">

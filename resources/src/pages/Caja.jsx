@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client'
 import { useAuth } from '../context/AuthContext'
+import { useDialogo } from '../context/DialogoContext'
+import { useFeatures } from '../context/FeaturesContext'
+import { useToast } from '../context/ToastContext'
 import { aNumero } from '../utils/numero'
 
 const COP = (n) => '$' + Number(n ?? 0).toLocaleString('es-CO')
@@ -8,7 +11,12 @@ const CATEGORIAS_ICONO = { arriendo: '🏠', servicios: '💡', papeleria: '📎
 
 export default function Caja() {
   const { user } = useAuth()
+  const { visible } = useFeatures()
   const esPropietario = user?.es_super_admin || ['Administrador', 'Usuario'].includes(user?.rol?.nombre)
+  // Solo negocios con órdenes de servicio (taller/lavadero/barbería/tatuajes) usan
+  // el cobro por placa/orden — una tienda o restaurante no tiene ese módulo y ver
+  // esa caja de búsqueda ahí solo confunde ("¿qué placa? yo vendo comida").
+  const tieneOrdenesDeServicio = visible('servicios') || visible('lavadero') || visible('barberia') || visible('tatuajes')
 
   const [estado, setEstado] = useState(null) // {sesion, ventas, gastos, esperado} | {sesion:null}
   const [utilidad, setUtilidad] = useState(null)
@@ -80,7 +88,7 @@ export default function Caja() {
       <Ingresos onCambio={cargar} />
 
       {/* Cobro de órdenes de servicio por placa (lavadero, taller, barbería) */}
-      <CobrarOrden onCobrada={cargar} />
+      {tieneOrdenesDeServicio && <CobrarOrden onCobrada={cargar} />}
 
       {/* Gastos del día */}
       <Gastos esPropietario={esPropietario} onCambio={cargar} />
@@ -163,7 +171,7 @@ function CobrarOrden({ onCobrada }) {
 
   return (
     <div className="mt-8 rounded-2xl border border-slate-800 bg-slate-800/40 p-5">
-      <h2 className="font-bold mb-1">🏍️ Cobrar orden de servicio</h2>
+      <h2 className="font-bold mb-1">🔧 Cobrar orden de servicio</h2>
       <p className="text-sm text-slate-400 mb-3">Busca por placa o número de orden: el sistema precarga el total y cobra en un paso.</p>
 
       <form onSubmit={buscar} className="flex gap-2 mb-3">
@@ -212,6 +220,7 @@ function AbrirTurno({ onAbierto }) {
   const [monto, setMonto] = useState('')
   const [notas, setNotas] = useState('')
   const [guardando, setGuardando] = useState(false)
+  const toast = useToast()
 
   async function abrir(e) {
     e.preventDefault()
@@ -219,7 +228,7 @@ function AbrirTurno({ onAbierto }) {
     try {
       await api('/caja/abrir', { method: 'POST', body: { monto_apertura: aNumero(monto), notas_apertura: notas || null } })
       onAbierto()
-    } catch (err) { alert(err.message || 'No se pudo abrir la caja.') } finally { setGuardando(false) }
+    } catch (err) { toast.error(err.message || 'No se pudo abrir la caja.') } finally { setGuardando(false) }
   }
 
   return (
@@ -246,15 +255,18 @@ function TurnoAbierto({ estado, onCerrado }) {
   const [contado, setContado] = useState('')
   const [notas, setNotas] = useState('')
   const [cerrando, setCerrando] = useState(false)
+  const { confirmar } = useDialogo()
+  const toast = useToast()
 
   async function cerrar(e) {
     e.preventDefault()
-    if (!confirm('¿Cerrar el turno de caja? Se calculará el arqueo y el descuadre.')) return
+    const ok = await confirmar({ titulo: 'Cerrar turno', mensaje: '¿Cerrar el turno de caja? Se calculará el arqueo y el descuadre.', confirmarTexto: 'Cerrar turno' })
+    if (!ok) return
     setCerrando(true)
     try {
       const r = await api(`/caja/${sesion.id}/cerrar`, { method: 'POST', body: { monto_cierre: aNumero(contado), notas_cierre: notas || null } })
       onCerrado(r)
-    } catch (err) { alert(err.message || 'No se pudo cerrar la caja.') } finally { setCerrando(false) }
+    } catch (err) { toast.error(err.message || 'No se pudo cerrar la caja.') } finally { setCerrando(false) }
   }
 
   return (
@@ -301,6 +313,7 @@ function Ingresos({ onCambio }) {
   const [guardando, setGuardando] = useState(false)
   const [lista, setLista] = useState([])
   const [total, setTotal] = useState(0)
+  const toast = useToast()
 
   async function agregar(e) {
     e.preventDefault()
@@ -313,7 +326,7 @@ function Ingresos({ onCambio }) {
       setTotal((prev) => prev + Number(r.total || 0))
       setForm({ descripcion: '', monto: '', nombreCliente: '', cedula: '' })
       onCambio()
-    } catch (err) { alert(err.message || 'No se pudo registrar el ingreso.') } finally { setGuardando(false) }
+    } catch (err) { toast.error(err.message || 'No se pudo registrar el ingreso.') } finally { setGuardando(false) }
   }
 
   return (
@@ -363,6 +376,8 @@ function Gastos({ esPropietario, onCambio }) {
   const [datos, setDatos] = useState({ gastos: { data: [] }, total: 0, categorias: [] })
   const [form, setForm] = useState({ categoria: 'otros', descripcion: '', monto: '' })
   const [guardando, setGuardando] = useState(false)
+  const { confirmar } = useDialogo()
+  const toast = useToast()
 
   const cargar = useCallback(() => {
     api(`/gastos?desde=${hoy}&hasta=${hoy}`).then(setDatos).catch(() => {})
@@ -376,13 +391,14 @@ function Gastos({ esPropietario, onCambio }) {
       await api('/gastos', { method: 'POST', body: { ...form, monto: aNumero(form.monto) } })
       setForm({ categoria: 'otros', descripcion: '', monto: '' })
       cargar(); onCambio()
-    } catch (err) { alert(err.message || 'No se pudo registrar el gasto.') } finally { setGuardando(false) }
+    } catch (err) { toast.error(err.message || 'No se pudo registrar el gasto.') } finally { setGuardando(false) }
   }
 
   async function eliminar(id) {
-    if (!confirm('¿Eliminar este gasto?')) return
+    const ok = await confirmar({ titulo: 'Eliminar gasto', mensaje: '¿Eliminar este gasto?', confirmarTexto: 'Eliminar', peligroso: true })
+    if (!ok) return
     try { await api(`/gastos/${id}`, { method: 'DELETE' }); cargar(); onCambio() }
-    catch (err) { alert(err.message) }
+    catch (err) { toast.error(err.message) }
   }
 
   const lista = datos.gastos?.data ?? []

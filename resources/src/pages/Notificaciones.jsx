@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
+import { useToast } from '../context/ToastContext'
 
 export default function Notificaciones() {
   const [items, setItems] = useState([])
   const [cargando, setCargando] = useState(true)
+  const toast = useToast()
 
   async function cargar() {
     setCargando(true)
-    try { setItems(await api('/notificaciones')) } finally { setCargando(false) }
+    try { setItems(await api('/notificaciones')) }
+    catch (err) { toast.error(err.message || 'No se pudieron cargar las notificaciones.') }
+    finally { setCargando(false) }
   }
 
   useEffect(() => {

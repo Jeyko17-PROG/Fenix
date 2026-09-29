@@ -100,11 +100,15 @@ Route::get('/tipos-negocio', function () {
         ->orderBy('orden')
         ->get(['id', 'clave', 'nombre', 'descripcion']);
 });
-Route::post('/register', [AuthController::class, 'register']);
-Route::post('/activar', [AuthController::class, 'activar']);
-Route::post('/login', [AuthController::class, 'login']);
-Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
-Route::post('/reset-password', [AuthController::class, 'resetPassword']);
+// Throttle en las rutas públicas de autenticación: sin esto, cualquiera puede
+// probar contraseñas o códigos de activación sin freno (fuerza bruta), o
+// saturar de correos a un tercero via /reenviar-codigo-activacion.
+Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:5,60');
+Route::post('/activar', [AuthController::class, 'activar'])->middleware('throttle:10,1');
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
+Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:5,1');
+Route::post('/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:5,1');
+Route::post('/reenviar-codigo-activacion', [AuthController::class, 'reenviarCodigoActivacion'])->middleware('throttle:6,1');
 
 // --- BLOQUE C: Portal público de reservas (sin autenticación, destino del QR) ---
 // Versión POR USUARIO: cada negocio tiene su slug único en la URL.
@@ -345,6 +349,7 @@ Route::middleware(['auth:sanctum', 'membresia'])->group(function () {
         Route::get('ordenes-compra/{orden}', [OrdenCompraController::class, 'show']);
         Route::post('ordenes-compra/{orden}/recibir', [OrdenCompraController::class, 'recibir']);
         Route::post('ordenes-compra/{orden}/pdf', [DocumentoController::class, 'generarOrdenCompra']);
+        Route::delete('ordenes-compra/{orden}', [OrdenCompraController::class, 'destroy']);
     });
 
     // Gestión documental (adjuntos) de proveedores y clientes — solo planes con gestión documental

@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
+import { useDialogo } from '../context/DialogoContext'
+import { useToast } from '../context/ToastContext'
 
 const ESTADO_COLOR = {
   ACTIVO: 'bg-emerald-500/15 text-emerald-400',
@@ -16,6 +18,8 @@ export default function Licencias() {
   const [planes, setPlanes] = useState([])
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState('')
+  const { preguntar } = useDialogo()
+  const toast = useToast()
 
   async function cargar() {
     setCargando(true); setError('')
@@ -31,16 +35,22 @@ export default function Licencias() {
 
   async function accion(fn) {
     try { await fn(); await cargar() }
-    catch (err) { alert(err.message || 'Error en la operación.') }
+    catch (err) { toast.error(err.message || 'Error en la operación.') }
   }
 
   const cambiarPlan = (e, plan_id) => accion(() => api(`/admin/empresas/${e.id}/plan`, { method: 'POST', body: { plan_id: Number(plan_id) } }))
   const cambiarEstado = (e, estado) => accion(() => api(`/admin/empresas/${e.id}/estado`, { method: 'POST', body: { estado } }))
 
   async function cambiarLimite(e) {
-    const v = prompt(`Límite manual de clientes para ${e.nombre} (vacío = usar el del plan):`, e.limite_manual ?? '')
+    const v = await preguntar({ titulo: 'Límite de clientes', mensaje: `Límite manual de clientes para ${e.nombre} (vacío = usar el del plan):`, valorInicial: e.limite_manual ?? '', numerico: true })
     if (v === null) return
     accion(() => api(`/admin/empresas/${e.id}/limite`, { method: 'POST', body: { limite_clientes: v === '' ? null : Number(v) } }))
+  }
+
+  async function cambiarLimiteFacturas(e) {
+    const v = await preguntar({ titulo: 'Límite de facturas', mensaje: `Límite manual de facturas para ${e.nombre} (vacío = usar el del plan; las cotizaciones no cuentan):`, valorInicial: e.limite_facturas_manual ?? '', numerico: true })
+    if (v === null) return
+    accion(() => api(`/admin/empresas/${e.id}/limite`, { method: 'POST', body: { limite_facturas: v === '' ? null : Number(v) } }))
   }
 
   return (
@@ -59,6 +69,7 @@ export default function Licencias() {
                 <th className="text-left p-3">Dueño</th>
                 <th className="text-left p-3">Plan</th>
                 <th className="text-left p-3">Clientes / Límite</th>
+                <th className="text-left p-3">Facturas / Límite</th>
                 <th className="text-left p-3">Estado</th>
                 <th className="text-right p-3">Acciones</th>
               </tr>
@@ -82,6 +93,12 @@ export default function Licencias() {
                     </span>
                     <button onClick={() => cambiarLimite(e)} className="ml-2 text-xs text-sky-400 hover:underline">editar</button>
                   </td>
+                  <td className="p-3">
+                    <span className={e.limite_facturas && e.facturas_usadas >= e.limite_facturas ? 'text-red-400' : 'text-slate-300'}>
+                      {e.facturas_usadas} / {e.limite_facturas ?? '∞'}
+                    </span>
+                    <button onClick={() => cambiarLimiteFacturas(e)} className="ml-2 text-xs text-sky-400 hover:underline">editar</button>
+                  </td>
                   <td className="p-3"><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${ESTADO_COLOR[e.estado] ?? ''}`}>{e.estado}</span></td>
                   <td className="p-3">
                     <div className="flex flex-wrap gap-1 justify-end">
@@ -92,7 +109,7 @@ export default function Licencias() {
                   </td>
                 </tr>
               ))}
-              {empresas.length === 0 && <tr><td colSpan="6" className="p-6 text-center text-slate-500">Sin empresas.</td></tr>}
+              {empresas.length === 0 && <tr><td colSpan="7" className="p-6 text-center text-slate-500">Sin empresas.</td></tr>}
             </tbody>
           </table>
         </div>

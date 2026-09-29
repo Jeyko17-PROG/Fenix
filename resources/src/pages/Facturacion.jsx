@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { API_BASE, api, getToken } from '../api/client'
 import FirmaPad from '../components/FirmaPad'
 import { useFeatures } from '../context/FeaturesContext'
+import { useDialogo } from '../context/DialogoContext'
+import { useToast } from '../context/ToastContext'
 import { aNumero } from '../utils/numero'
 
 const FIRMA_KEY = 'logix_firma'
@@ -17,6 +19,8 @@ const money = (n) => '$' + Number(n || 0).toLocaleString('es-CO', { maximumFract
 
 export default function Facturacion() {
   const { activa } = useFeatures()
+  const { confirmar, preguntar } = useDialogo()
+  const toast = useToast()
   const [facturas, setFacturas] = useState([])
   const [clientes, setClientes] = useState([])
   const [productos, setProductos] = useState([])
@@ -36,6 +40,8 @@ export default function Facturacion() {
   // hasta que se le registre el primer abono real (ver registrarPago en el backend).
   const [esCotizacion, setEsCotizacion] = useState(false)
   const [editId, setEditId] = useState(null) // null = factura nueva; id = editando una existente
+  // Divisa/firma van colapsadas por defecto (la mayoría de ventas no las toca).
+  const [avanzadoAbierto, setAvanzadoAbierto] = useState(false)
   const scanRef = useRef(null)
 
   // --- Historial de pagos/abonos ---
@@ -70,12 +76,16 @@ export default function Facturacion() {
   }, [abierto, ventaRapidaActiva])
 
   async function cargar() {
-    const data = await api('/facturas')
-    setFacturas(data.data ?? data)
+    try {
+      const data = await api('/facturas')
+      setFacturas(data.data ?? data)
+    } catch (err) {
+      setError(err.message || 'No se pudo cargar la facturación. Verifica que tu plan la incluya.')
+    }
   }
   useEffect(() => {
     cargar()
-    api('/clientes').then((d) => setClientes(d.data ?? d))
+    api('/clientes').then((d) => setClientes(d.data ?? d)).catch((err) => setError(err.message || 'No se pudieron cargar los clientes.'))
     api('/productos').then((d) => setProductos(d.data ?? d)).catch(() => setProductos([]))
     api('/metodos-pago').then(setMetodosPago).catch(() => setMetodosPago([]))
   }, [])
@@ -122,6 +132,7 @@ export default function Facturacion() {
     setCurrency('COP'); setExchangeRate('')
     setVentaRapidaActiva(false)
     setEsCotizacion(false)
+    setAvanzadoAbierto(false)
     setError('')
     setAbierto(true)
   }
@@ -147,6 +158,8 @@ export default function Facturacion() {
       setMedioPago(completa.metodo_pago || 'EFECTIVO')
       setFirma(null)
       setVentaRapidaActiva(false)
+      // Si ya venía en otra moneda, no esconderlo detrás del colapsable.
+      setAvanzadoAbierto((completa.currency || 'COP') !== 'COP')
       setAbierto(true)
     } catch (err) { setError(err.message) }
   }
@@ -159,7 +172,7 @@ export default function Facturacion() {
     setVentaRapidaActiva(true)
     const generico = clientes.find((c) => (c.nombre_completo || '').toLowerCase().includes('consumidor final'))
     if (generico) setCab((prev) => ({ ...prev, cliente_id: String(generico.id) }))
-    else alert('Crea un cliente llamado "Consumidor Final" para usar la venta rápida.')
+    else toast.error('Crea un cliente llamado "Consumidor Final" para usar la venta rápida.')
   }
 
   // Lector de código de barras / SKU: Enter agrega el producto como línea nueva
@@ -181,7 +194,7 @@ export default function Facturacion() {
   }
 
   function guardarMiFirma() {
-    if (firma) { localStorage.setItem(FIRMA_KEY, firma); alert('Firma guardada. Aparecerá automáticamente en tus próximas facturas.') }
+    if (firma) { localStorage.setItem(FIRMA_KEY, firma); toast.exito('Firma guardada. Aparecerá automáticamente en tus próximas facturas.') }
   }
   function olvidarMiFirma() {
     localStorage.removeItem(FIRMA_KEY); setFirma(null)
@@ -236,10 +249,12 @@ export default function Facturacion() {
     setTimeout(() => URL.revokeObjectURL(url), 60000)
   }
   async function enviar(f) {
-    const email = prompt('Enviar factura al correo:')
+    const email = await preguntar({ titulo: 'Enviar factura', mensaje: `Correo al que enviar la factura ${f.numero}:`, placeholder: 'cliente@correo.com', confirmarTexto: 'Enviar' })
     if (!email) return
-    const r = await api(`/facturas/${f.id}/enviar`, { method: 'POST', body: { email } })
-    alert(r.mensaje)
+    try {
+      const r = await api(`/facturas/${f.id}/enviar`, { method: 'POST', body: { email } })
+      toast.exito(r.mensaje)
+    } catch (err) { toast.error(err.message || 'No se pudo enviar la factura.') }
   }
   async function enviarWhatsApp(f) {
     const r = await api(`/facturas/${f.id}/whatsapp`, { method: 'POST' })
@@ -247,12 +262,17 @@ export default function Facturacion() {
   }
 
   async function eliminar(f) {
-    if (!confirm(`¿Eliminar la factura ${f.numero}? Esto restaura el stock de los productos vendidos y no se puede deshacer.`)) return
+    const ok = await confirmar({
+      titulo: 'Eliminar factura',
+      mensaje: `¿Eliminar la factura ${f.numero}? Esto restaura el stock de los productos vendidos y no se puede deshacer.`,
+      confirmarTexto: 'Eliminar', peligroso: true,
+    })
+    if (!ok) return
     try {
       await api(`/facturas/${f.id}`, { method: 'DELETE' })
       if (pagosDe?.id === f.id) setPagosDe(null)
       cargar()
-    } catch (err) { alert(err.message || 'No se pudo eliminar la factura.') }
+    } catch (err) { toast.error(err.message || 'No se pudo eliminar la factura.') }
   }
 
   // Se puede seguir abonando mientras la factura no esté pagada del todo ni anulada.
@@ -283,7 +303,7 @@ export default function Facturacion() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-bold">Facturación</h1>
           <p className="text-sm text-slate-400">Genera, descarga y envía tus facturas de venta.</p>
@@ -295,6 +315,10 @@ export default function Facturacion() {
           </div>
         )}
       </div>
+
+      {!abierto && facturas.length === 0 && error && (
+        <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm text-red-300">{error}</div>
+      )}
 
       {abierto && (
         <form onSubmit={guardar} className="mb-8 rounded-2xl border border-slate-800 bg-slate-900/60 shadow-xl overflow-hidden">
@@ -347,22 +371,6 @@ export default function Facturacion() {
                 ))}
               </div>
             </div>
-              <div className="mt-3 grid sm:grid-cols-2 gap-4">
-                <label className="block">
-                  <span className="mb-1 block text-sm text-slate-300">Divisa</span>
-                  <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="input">
-                    <option value="COP">Pesos Colombianos (COP)</option>
-                    <option value="USD">USD (Dólares)</option>
-                    <option value="MXN">Pesos Mexicanos (MXN)</option>
-                  </select>
-                </label>
-                {currency !== 'COP' && (
-                  <label className="block">
-                    <span className="mb-1 block text-sm text-slate-300">Tipo de cambio (opcional)</span>
-                    <input type="number" step="0.000001" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} className="input" placeholder="Ej: 0.00027" />
-                  </label>
-                )}
-              </div>
           </section>
 
           {/* Sección: productos / servicios */}
@@ -420,19 +428,51 @@ export default function Facturacion() {
             <button type="button" onClick={addLinea} className="mt-3 text-sm font-medium text-emerald-400 hover:text-emerald-300">+ Agregar línea</button>
           </section>
 
-          {/* Sección: firma digital (solo planes con firma digital; no aplica al editar) */}
-          {activa('firma') && !editId && (
-            <section className="px-6 py-5 border-b border-slate-800">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Firma digital</h3>
-                <div className="flex gap-3 text-xs">
-                  <button type="button" onClick={guardarMiFirma} disabled={!firma} className="text-emerald-400 hover:text-emerald-300 disabled:opacity-40">Guardar como mi firma</button>
-                  <button type="button" onClick={olvidarMiFirma} className="text-slate-400 hover:text-slate-300">Olvidar firma guardada</button>
+          {/* Opciones avanzadas: moneda extranjera y firma digital - la mayoría de
+              ventas no las necesita, así que quedan colapsadas por defecto para
+              no saturar el formulario. Si ya traían algo distinto del default
+              (al editar una factura en otra moneda), arrancan abiertas para no
+              esconder datos que ya existían. */}
+          <section className="border-b border-slate-800">
+            <button type="button" onClick={() => setAvanzadoAbierto((v) => !v)}
+              className="flex w-full items-center justify-between px-6 py-3 text-sm font-medium text-slate-300 hover:bg-slate-800/40">
+              <span>⚙️ Opciones avanzadas (moneda extranjera{activa('firma') && !editId ? ', firma digital' : ''})</span>
+              <span className="text-slate-500">{avanzadoAbierto ? '▲' : '▼'}</span>
+            </button>
+            {avanzadoAbierto && (
+              <div className="px-6 pb-5 space-y-5">
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <label className="block">
+                    <span className="mb-1 block text-sm text-slate-300">Divisa</span>
+                    <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="input">
+                      <option value="COP">Pesos Colombianos (COP)</option>
+                      <option value="USD">USD (Dólares)</option>
+                      <option value="MXN">Pesos Mexicanos (MXN)</option>
+                    </select>
+                  </label>
+                  {currency !== 'COP' && (
+                    <label className="block">
+                      <span className="mb-1 block text-sm text-slate-300">Tipo de cambio (opcional)</span>
+                      <input type="number" step="0.000001" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} className="input" placeholder="Ej: 0.00027" />
+                    </label>
+                  )}
                 </div>
+
+                {activa('firma') && !editId && (
+                  <div>
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Firma digital</h3>
+                      <div className="flex gap-3 text-xs">
+                        <button type="button" onClick={guardarMiFirma} disabled={!firma} className="text-emerald-400 hover:text-emerald-300 disabled:opacity-40">Guardar como mi firma</button>
+                        <button type="button" onClick={olvidarMiFirma} className="text-slate-400 hover:text-slate-300">Olvidar firma guardada</button>
+                      </div>
+                    </div>
+                    <FirmaPad value={firma} onChange={setFirma} />
+                  </div>
+                )}
               </div>
-              <FirmaPad value={firma} onChange={setFirma} />
-            </section>
-          )}
+            )}
+          </section>
 
           {/* Sección: notas + totales */}
           <section className="grid gap-6 px-6 py-5 md:grid-cols-2">
@@ -496,7 +536,7 @@ export default function Facturacion() {
                     <span title={f.notas} className="ml-1.5 text-slate-500 cursor-help" aria-label="Tiene observaciones">📝</span>
                   )}
                 </td>
-                <td className="p-3 text-slate-400">{f.fecha}</td>
+                <td className="p-3 text-slate-400">{f.fecha ? new Date(f.fecha).toLocaleDateString('es-CO') : '—'}</td>
                 <td className="p-3 text-right">
                   {money(f.total)}
                   {admitePagos(f) && Number(f.monto_pagado) > 0 && (

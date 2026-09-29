@@ -13,6 +13,7 @@ use App\Operations\Application\KardexService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\QueryException;
 use Illuminate\Validation\ValidationException;
 
 class ServiceOrderController extends Controller
@@ -86,9 +87,23 @@ class ServiceOrderController extends Controller
         $data['owner_id'] = $ownerId;
         $data['estado'] = 'recibido';
         $data['fecha_recepcion'] = now();
-        $data['numero_orden'] = ServiceOrder::generarNumeroOrden($ownerId);
 
-        $orden = ServiceOrder::create($data);
+        // numero_orden es único por empresa (owner_id), no global: dos empleados de
+        // la MISMA empresa creando una orden en el mismo instante podrían calcular
+        // el mismo consecutivo (el conteo no es atómico), así que se reintenta con
+        // el siguiente número si eso llega a chocar.
+        for ($intento = 0; ; $intento++) {
+            $data['numero_orden'] = ServiceOrder::generarNumeroOrden($ownerId, $intento);
+            try {
+                $orden = ServiceOrder::create($data);
+                break;
+            } catch (QueryException $e) {
+                if ($intento >= 5 || ! str_contains($e->getMessage(), 'service_orders_owner_id_numero_orden_unique')) {
+                    throw $e;
+                }
+            }
+        }
+
         return response()->json($orden->load('cliente:id,nombre_completo', 'assetVehicle:id,placa_identificador,marca,modelo,tipo_activo', 'planLavado:id,nombre,icono', 'servicio:id,nombre', 'mecanicoAsignado:id,nombre,apellido'), 201);
     }
 
@@ -146,6 +161,36 @@ class ServiceOrderController extends Controller
 
         $serviceOrder->update($data);
         return response()->json($serviceOrder->load('details'));
+    }
+
+    /**
+     * Eliminar una orden de servicio completa. Bloqueada si ya está facturada
+     * (tiene una factura real detrás - borrarla la dejaría huérfana); devuelve
+     * al inventario cualquier repuesto que sus detalles hayan descontado,
+     * igual que ya hace eliminarDetalle() para un solo ítem.
+     */
+    public function destroy(Request $request, ServiceOrder $serviceOrder): JsonResponse
+    {
+        if ($serviceOrder->estado === 'facturado') {
+            return response()->json(['message' => 'No se puede eliminar una orden ya facturada.'], 422);
+        }
+
+        $this->autorizarMecanico($serviceOrder);
+
+        foreach ($serviceOrder->details as $detail) {
+            $producto = Producto::find($detail->producto_id);
+            if ($producto && ! $producto->is_service && (float) $detail->cantidad > 0) {
+                $bodegaId = $this->resolverBodega($request);
+                $this->kardex->entrada((int) $producto->id, $bodegaId, (float) $detail->cantidad,
+                    $this->costoPromedioActual($producto->id, $bodegaId), $request->user()->id,
+                    'DEVOLUCION_ORDEN', ['tipo' => 'ORDEN_SERVICIO', 'id' => $serviceOrder->id]);
+            }
+        }
+
+        $serviceOrder->details()->delete();
+        $serviceOrder->delete();
+
+        return response()->json(['message' => 'Orden eliminada y el repuesto usado se devolvió al inventario.']);
     }
 
     /**

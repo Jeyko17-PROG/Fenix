@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useToast } from '../context/ToastContext'
 
 /**
  * Pad de firma digital reutilizable.
@@ -13,6 +14,7 @@ export default function FirmaPad({ value, onChange }) {
   const dibujando = useRef(false)
   const ultimo = useRef(null)        // última firma emitida (evita redibujar en bucle)
   const [tieneFirma, setTieneFirma] = useState(false)
+  const toast = useToast()
 
   function ctx() {
     const c = canvasRef.current
@@ -74,7 +76,7 @@ export default function FirmaPad({ value, onChange }) {
     const file = e.target.files?.[0]
     if (!file) return
     if (!/^image\/(png|jpe?g)$/.test(file.type)) {
-      alert('Formato no válido. Usa PNG, JPG o JPEG.')
+      toast.error('Formato no válido. Usa PNG, JPG o JPEG.')
       return
     }
     const reader = new FileReader()

@@ -119,7 +119,7 @@ class CuentaController extends Controller
             'password' => Str::password(24), // nunca se usa: se entra con "Entrar" desde Mis negocios
             'nombre_empresa' => $data['nombre_empresa'],
             'tipo_negocio_id' => $data['tipo_negocio_id'],
-        ]);
+        ], enviarCodigoPorCorreo: false);
 
         // Vínculo directo: quien lo crea ya demostró ser el dueño (sesión activa).
         NegocioVinculado::firstOrCreate(['user_id' => $actual->id, 'vinculado_user_id' => $nuevo->id]);

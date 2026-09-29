@@ -123,9 +123,6 @@ const MENU = [
       { to: '/taller', label: 'Taller / Órdenes', icon: '🔧', feat: 'servicios', featPorTipo: { lavadero: 'lavadero', barberia: 'barberia', tatuajes: 'tatuajes' } },
       { to: '/planes-lavado', label: 'Planes de Lavado', icon: '🧼', feat: 'lavadero', soloTipo: 'lavadero' },
       { to: '/servicios', label: 'Servicios', icon: '💈', feat: 'agenda' },
-      // Mismo módulo que "Productos" en Inventario: el catálogo con fotos y
-      // disponible/agotado que el cliente ve al agendar su cita en el portal.
-      { to: '/productos', label: 'Catálogo', icon: '🛍️', feat: 'productos' },
       { to: '/restaurante', label: 'Mesas y Comandas', icon: '🍽️', feat: 'mesas' },
       { to: '/caja', label: 'Caja y Gastos', icon: '💵', feat: 'caja' },
     ],
@@ -322,9 +319,9 @@ export default function Layout() {
             <span className="text-xl">☰</span>
             Menú
           </button>
-          <button onClick={() => navigate('/dashboard')} aria-label="Volver al Dashboard" className="flex items-center gap-2 p-2 rounded-lg bg-slate-800/80 text-slate-200 hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-500 text-base leading-none">
-            <span className="text-lg">←</span>
-            Atrás
+          <button onClick={() => navigate('/dashboard')} aria-label="Ir al inicio" className="flex items-center gap-2 p-2 rounded-lg bg-slate-800/80 text-slate-200 hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-500 text-base leading-none">
+            <span className="text-lg">🏠</span>
+            Inicio
           </button>
         </div>
       </header>

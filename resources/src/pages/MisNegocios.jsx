@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../api/client'
+import { useDialogo } from '../context/DialogoContext'
+import { useToast } from '../context/ToastContext'
 
 const NEGOCIO_VACIO = { name: '', nombre_empresa: '', tipo_negocio_id: '', telefono: '' }
 
@@ -27,6 +29,8 @@ export default function MisNegocios() {
   const [nuevoNegocio, setNuevoNegocio] = useState(NEGOCIO_VACIO)
   const [creando, setCreando] = useState(false)
   const [creado, setCreado] = useState(null) // { email, password } tras crear, para mostrarlo una sola vez
+  const { confirmar } = useDialogo()
+  const toast = useToast()
 
   useEffect(() => { api('/tipos-negocio').then(setTiposNegocio).catch(() => {}) }, [])
 
@@ -84,9 +88,10 @@ export default function MisNegocios() {
   }
 
   async function quitar(n) {
-    if (!confirm(`¿Dejar de ver "${n.negocio}" en Mis negocios?`)) return
+    const ok = await confirmar({ titulo: 'Dejar de ver negocio', mensaje: `¿Dejar de ver "${n.negocio}" en Mis negocios?`, confirmarTexto: 'Quitar' })
+    if (!ok) return
     try { await desvincularNegocio(n.id); cargar() }
-    catch (err) { alert(err.message || 'No se pudo desvincular.') }
+    catch (err) { toast.error(err.message || 'No se pudo desvincular.') }
   }
 
   async function salir() {

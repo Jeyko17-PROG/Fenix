@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
+import { useDialogo } from '../context/DialogoContext'
+import { useToast } from '../context/ToastContext'
 
 export default function Bodegas() {
   const [lista, setLista] = useState([])
@@ -11,12 +13,16 @@ export default function Bodegas() {
   const [catNombre, setCatNombre] = useState('')
   const [error, setError] = useState('')
   const [asignando, setAsignando] = useState(null) // bodega para asignar servicios, o null
+  const { confirmar, preguntar } = useDialogo()
+  const toast = useToast()
 
   async function cargar() {
-    setLista(await api('/bodegas'))
-    setCategorias(await api('/categorias'))
+    try {
+      setLista(await api('/bodegas'))
+      setCategorias(await api('/categorias'))
+    } catch (err) { toast.error(err.message || 'No se pudieron cargar las sucursales.') }
   }
-  useEffect(() => { cargar() }, [])
+  useEffect(() => { cargar() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function crearBodega(e) {
     e.preventDefault(); setError('')
@@ -28,23 +34,29 @@ export default function Bodegas() {
 
   async function crearCategoria(e) {
     e.preventDefault()
-    await api('/categorias', { method: 'POST', body: { nombre: catNombre } })
-    setCatNombre(''); cargar()
+    try {
+      await api('/categorias', { method: 'POST', body: { nombre: catNombre } })
+      setCatNombre(''); cargar()
+    } catch (err) { toast.error(err.message || 'No se pudo crear la categoría.') }
   }
 
   async function definirPrincipal(b) {
-    await api(`/bodegas/${b.id}/principal`, { method: 'POST' }); cargar()
+    try { await api(`/bodegas/${b.id}/principal`, { method: 'POST' }); cargar() }
+    catch (err) { toast.error(err.message || 'No se pudo definir como principal.') }
   }
   async function renombrar(b) {
-    const nuevo = prompt('Nuevo nombre de la sucursal:', b.nombre)
+    const nuevo = await preguntar({ titulo: 'Renombrar sucursal', mensaje: 'Nuevo nombre de la sucursal:', valorInicial: b.nombre })
     if (!nuevo || nuevo === b.nombre) return
-    await api(`/bodegas/${b.id}`, { method: 'PUT', body: { nombre: nuevo, direccion: b.direccion, telefono: b.telefono, ciudad: b.ciudad, activo: b.activo } })
-    cargar()
+    try {
+      await api(`/bodegas/${b.id}`, { method: 'PUT', body: { nombre: nuevo, direccion: b.direccion, telefono: b.telefono, ciudad: b.ciudad, activo: b.activo } })
+      cargar()
+    } catch (err) { toast.error(err.message || 'No se pudo renombrar la sucursal.') }
   }
   async function eliminar(b) {
-    if (!confirm(`¿Eliminar la sucursal "${b.nombre}"?`)) return
+    const ok = await confirmar({ titulo: 'Eliminar sucursal', mensaje: `¿Eliminar la sucursal "${b.nombre}"?`, confirmarTexto: 'Eliminar', peligroso: true })
+    if (!ok) return
     try { await api(`/bodegas/${b.id}`, { method: 'DELETE' }); cargar() }
-    catch (err) { alert(err.message || 'No se pudo eliminar.') }
+    catch (err) { toast.error(err.message || 'No se pudo eliminar.') }
   }
 
   return (
@@ -108,6 +120,7 @@ function AsignarServiciosModal({ bodega, onClose }) {
   const [seleccion, setSeleccion] = useState([])
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
+  const toast = useToast()
 
   useEffect(() => {
     Promise.all([api('/servicios'), api(`/bodegas/${bodega.id}/servicios`)])
@@ -115,6 +128,7 @@ function AsignarServiciosModal({ bodega, onClose }) {
         setServicios(todos)
         setSeleccion(asignados.map((s) => s.id))
       })
+      .catch((err) => toast.error(err.message || 'No se pudieron cargar los servicios.'))
       .finally(() => setCargando(false))
   }, [bodega.id])
 
@@ -127,7 +141,7 @@ function AsignarServiciosModal({ bodega, onClose }) {
     try {
       await api(`/bodegas/${bodega.id}/servicios`, { method: 'PUT', body: { servicio_ids: seleccion } })
       onClose()
-    } catch (err) { alert(err.message || 'No se pudo guardar.') }
+    } catch (err) { toast.error(err.message || 'No se pudo guardar.') }
     finally { setGuardando(false) }
   }
 

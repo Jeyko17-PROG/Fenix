@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
+import { useDialogo } from '../context/DialogoContext'
+import { useToast } from '../context/ToastContext'
 import { aNumero, formatearEnVivo } from '../utils/numero'
 
 const VACIO = {
@@ -25,19 +27,25 @@ export default function Productos() {
   const [usarPresentacion, setUsarPresentacion] = useState(false)
   const [buscar, setBuscar] = useState('')
   const [categoriaFiltro, setCategoriaFiltro] = useState('')
+  const { confirmar } = useDialogo()
+  const toast = useToast()
 
   async function cargar(termino = buscar, categoria = categoriaFiltro) {
     const params = new URLSearchParams()
     if (termino) params.set('buscar', termino)
     if (categoria) params.set('categoria_id', categoria)
     const qs = params.toString() ? `?${params.toString()}` : ''
-    const data = await api(`/productos${qs}`)
-    setLista(data.data ?? data)
-    setValorTotalInventario(data.valor_total_inventario ?? 0)
+    try {
+      const data = await api(`/productos${qs}`)
+      setLista(data.data ?? data)
+      setValorTotalInventario(data.valor_total_inventario ?? 0)
+    } catch (err) {
+      setError(err.message || 'No se pudieron cargar los productos. Verifica que tu plan lo incluya.')
+    }
   }
   useEffect(() => {
     cargar()
-    api('/categorias').then(setCategorias)
+    api('/categorias').then(setCategorias).catch(() => setCategorias([]))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -78,7 +86,7 @@ export default function Productos() {
     try {
       await api(`/productos/${editId}/galeria/${imagenId}`, { method: 'DELETE' })
       setGaleria((g) => g.filter((f) => f.id !== imagenId))
-    } catch (err) { alert(err.message || 'No se pudo quitar la foto.') }
+    } catch (err) { toast.error(err.message || 'No se pudo quitar la foto.') }
   }
 
   async function guardar(e) {
@@ -130,9 +138,12 @@ export default function Productos() {
   }
 
   async function eliminar(id) {
-    if (!confirm('¿Eliminar producto?')) return
-    await api(`/productos/${id}`, { method: 'DELETE' })
-    cargar()
+    const ok = await confirmar({ titulo: 'Eliminar producto', mensaje: '¿Eliminar este producto?', confirmarTexto: 'Eliminar', peligroso: true })
+    if (!ok) return
+    try {
+      await api(`/productos/${id}`, { method: 'DELETE' })
+      cargar()
+    } catch (err) { toast.error(err.message || 'No se pudo eliminar el producto.') }
   }
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
@@ -148,6 +159,10 @@ export default function Productos() {
         </div>
         <button onClick={nuevo} className="rounded-lg bg-emerald-600 hover:bg-emerald-500 px-4 py-2 text-sm font-semibold">+ Nuevo</button>
       </div>
+
+      {!abierto && lista.length === 0 && error && (
+        <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm text-red-300">{error}</div>
+      )}
 
       <div className="flex flex-wrap gap-2 mb-4">
         <input

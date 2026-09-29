@@ -22,6 +22,9 @@ class PlanSeeder extends Seeder
                 'precio_mensual' => 0,
                 'limite_clientes' => 200,
                 'limite_citas' => 100,
+                // Prueba gratuita de 15 días: una factura por día como tope, para
+                // que se note el valor de facturar sin regalar el mes completo.
+                'limite_facturas' => 15,
                 'orden' => 0,
                 'funcionalidades' => $gratuito,
                 'incluye' => ['Dashboard básico', 'Clientes', 'Agenda y citas', 'Portal de reservas', 'Código QR', 'Bloc de notas', 'Calculadora'],
@@ -31,6 +34,7 @@ class PlanSeeder extends Seeder
                 'precio_mensual' => 90000,
                 'limite_clientes' => 500,
                 'limite_citas' => 1000,
+                'limite_facturas' => 70,
                 'orden' => 1,
                 'funcionalidades' => $normal,
                 'incluye' => ['Todo lo del plan Gratuito', 'Facturación electrónica', 'Proveedores', 'Productos', 'Gestión documental básica', 'Exportación PDF', 'Notificaciones por correo'],
@@ -40,6 +44,7 @@ class PlanSeeder extends Seeder
                 'precio_mensual' => 160000,
                 'limite_clientes' => 1000,
                 'limite_citas' => 5000,
+                'limite_facturas' => 100,
                 'orden' => 2,
                 'funcionalidades' => $medio,
                 'incluye' => ['Todo lo del plan Normal', 'Inventario completo', 'Gestión de bodegas', 'Reportes avanzados', 'Alertas de stock', 'Firma digital', 'Gestión documental avanzada'],
@@ -49,6 +54,7 @@ class PlanSeeder extends Seeder
                 'precio_mensual' => 250000,
                 'limite_clientes' => 5000,
                 'limite_citas' => 100000,
+                'limite_facturas' => 200,
                 'orden' => 3,
                 'funcionalidades' => $premium,
                 'incluye' => ['Acceso completo a toda la plataforma', 'OCR de documentos', 'Firma digital', 'Reportes y estadísticas avanzadas', 'Funciones premium futuras', 'Acceso prioritario a nuevas actualizaciones'],

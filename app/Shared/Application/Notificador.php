@@ -45,9 +45,26 @@ class Notificador
      *
      * $fromEmail/$fromName: remitente propio de la empresa (ej. facturas). Si
      * se omiten, el correo sale con el remitente global (config('mail.from')).
+     *
+     * $sincrono: true para los pocos correos donde el usuario está esperando
+     * en pantalla el resultado AHORA MISMO (ej. código de activación de 6
+     * dígitos) - si no hay un worker de colas corriendo (`queue:work`), un
+     * correo encolado normal puede quedarse esperando indefinidamente sin
+     * que nadie lo note. Salta la cola y manda directo, a costa de que la
+     * petición HTTP tarde un poco más en responder.
      */
-    public function correo(string $para, string $asunto, string $titulo, array $lineas, ?string $adjuntoPath = null, string $tipo = 'ADMIN', ?string $fromEmail = null, ?string $fromName = null): bool
+    public function correo(string $para, string $asunto, string $titulo, array $lineas, ?string $adjuntoPath = null, string $tipo = 'ADMIN', ?string $fromEmail = null, ?string $fromName = null, bool $sincrono = false): bool
     {
+        if ($sincrono) {
+            try {
+                Mail::to($para)->send(new CorreoLogix($asunto, $titulo, $lineas, $adjuntoPath, $fromEmail, $fromName));
+                return true;
+            } catch (\Throwable $e) {
+                Log::warning('No se pudo enviar el correo síncrono de Logix', ['para' => $para, 'error' => $e->getMessage()]);
+                return false;
+            }
+        }
+
         try {
             Mail::to($para)->queue(new CorreoLogix($asunto, $titulo, $lineas, $adjuntoPath, $fromEmail, $fromName));
             return true;

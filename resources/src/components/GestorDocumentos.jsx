@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, API_BASE } from '../api/client'
+import { useDialogo } from '../context/DialogoContext'
 
 // Categorías sugeridas (el usuario puede escribir una propia).
 const CATEGORIAS = ['Cámara de comercio', 'RUT', 'Certificación', 'Contrato', 'Cotización', 'Factura', 'Otro']
@@ -28,6 +29,7 @@ export default function GestorDocumentos({ tipo, id, titulo, onClose }) {
   const [error, setError] = useState('')
   const [preview, setPreview] = useState(null)        // { url, mime, nombre }
   const inputRef = useRef(null)
+  const { confirmar } = useDialogo()
   const reemplazarRef = useRef(null)
 
   async function cargar() {
@@ -72,7 +74,8 @@ export default function GestorDocumentos({ tipo, id, titulo, onClose }) {
   }
 
   async function eliminar(adj) {
-    if (!confirm(`¿Eliminar "${adj.nombre}"?`)) return
+    const ok = await confirmar({ titulo: 'Eliminar documento', mensaje: `¿Eliminar "${adj.nombre}"?`, confirmarTexto: 'Eliminar', peligroso: true })
+    if (!ok) return
     await api(`/adjuntos/${adj.id}`, { method: 'DELETE' })
     cargar()
   }

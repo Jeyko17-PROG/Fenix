@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { useFeatures } from '../context/FeaturesContext'
+import { useDialogo } from '../context/DialogoContext'
+import { useToast } from '../context/ToastContext'
 
 const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
 const METODO_PAGO_VACIO = { tipo: 'Nequi', nombre: '', numero_cuenta: '', enlace: '' }
@@ -11,6 +13,8 @@ const TIPOS_PAGO = ['Nequi', 'Daviplata', 'Tarjeta', 'Transferencia', 'Bancolomb
 export default function Configuracion() {
   const { user, setUser } = useAuth()
   const { activa } = useFeatures()
+  const { confirmar } = useDialogo()
+  const toast = useToast()
   const [perfilPublico, setPerfilPublico] = useState({
     politicas: '', instagram_url: '', tiktok_url: '', facebook_url: '', whatsapp_url: '',
   })
@@ -75,7 +79,8 @@ export default function Configuracion() {
   }
 
   async function eliminarMetodoPago(id) {
-    if (!confirm('¿Eliminar este método de pago?')) return
+    const ok = await confirmar({ titulo: 'Eliminar método de pago', mensaje: '¿Eliminar este método de pago?', confirmarTexto: 'Eliminar', peligroso: true })
+    if (!ok) return
     await api(`/metodos-pago/${id}`, { method: 'DELETE' })
     if (editandoMetodo === id) cancelarMetodoPago()
     cargarMetodosPago()
@@ -113,47 +118,60 @@ export default function Configuracion() {
       setUser(me)
       flash('Perfil público guardado.')
     } catch (err) {
-      alert(err.message || 'No se pudo guardar.')
+      toast.error(err.message || 'No se pudo guardar.')
     } finally {
       setGuardandoPerfil(false)
     }
   }
 
   async function cargar() {
-    const q = bodegaId ? `?bodega_id=${bodegaId}` : ''
-    const cfg = await api(`/agenda/configuracion${q}`)
-    setAjustes({ duracion_cita_min: cfg.ajustes.duracion_cita_min, buffer_min: cfg.ajustes.buffer_min })
-    setBloqueos(cfg.bloqueos)
-    // Mapa de horarios por día (un rango por día para la UI simple)
-    const porDia = {}
-    cfg.horarios.forEach((h) => { porDia[h.dia_semana] = h })
-    setHorarios(DIAS.map((_, d) => ({
-      dia_semana: d,
-      activo: !!porDia[d],
-      hora_inicio: porDia[d]?.hora_inicio?.slice(0, 5) ?? '08:00',
-      hora_fin: porDia[d]?.hora_fin?.slice(0, 5) ?? '18:00',
-    })))
+    try {
+      const q = bodegaId ? `?bodega_id=${bodegaId}` : ''
+      const cfg = await api(`/agenda/configuracion${q}`)
+      setAjustes({ duracion_cita_min: cfg.ajustes.duracion_cita_min, buffer_min: cfg.ajustes.buffer_min })
+      setBloqueos(cfg.bloqueos)
+      // Mapa de horarios por día (un rango por día para la UI simple)
+      const porDia = {}
+      cfg.horarios.forEach((h) => { porDia[h.dia_semana] = h })
+      setHorarios(DIAS.map((_, d) => ({
+        dia_semana: d,
+        activo: !!porDia[d],
+        hora_inicio: porDia[d]?.hora_inicio?.slice(0, 5) ?? '08:00',
+        hora_fin: porDia[d]?.hora_fin?.slice(0, 5) ?? '18:00',
+      })))
+    } catch (err) {
+      toast.error(err.message || 'No se pudo cargar la configuración de agenda.')
+    }
   }
   useEffect(() => { cargar() }, [bodegaId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function flash(t) { setMsg(t); setTimeout(() => setMsg(''), 2500) }
 
   async function guardarAjustes() {
-    await api('/agenda/ajustes', { method: 'PUT', body: ajustes })
-    flash('Ajustes guardados.')
+    try {
+      await api('/agenda/ajustes', { method: 'PUT', body: ajustes })
+      flash('Ajustes guardados.')
+    } catch (err) { toast.error(err.message || 'No se pudieron guardar los ajustes.') }
   }
   async function guardarHorarios() {
     const payload = horarios.filter((h) => h.activo).map((h) => ({ dia_semana: h.dia_semana, hora_inicio: h.hora_inicio, hora_fin: h.hora_fin }))
-    await api('/agenda/horarios', { method: 'PUT', body: { bodega_id: bodegaId || null, horarios: payload } })
-    flash('Horario laboral guardado.')
+    try {
+      await api('/agenda/horarios', { method: 'PUT', body: { bodega_id: bodegaId || null, horarios: payload } })
+      flash('Horario laboral guardado.')
+    } catch (err) { toast.error(err.message || 'No se pudo guardar el horario.') }
   }
   async function crearBloqueo(e) {
     e.preventDefault()
-    await api('/agenda/bloqueos', { method: 'POST', body: { ...bloqueo, bodega_id: bodegaId || null } })
-    setBloqueo({ inicio: '', fin: '', motivo: '' }); cargar()
+    try {
+      await api('/agenda/bloqueos', { method: 'POST', body: { ...bloqueo, bodega_id: bodegaId || null } })
+      setBloqueo({ inicio: '', fin: '', motivo: '' }); cargar()
+    } catch (err) { toast.error(err.message || 'No se pudo crear el bloqueo.') }
   }
   async function eliminarBloqueo(id) {
-    await api(`/agenda/bloqueos/${id}`, { method: 'DELETE' }); cargar()
+    const ok = await confirmar({ titulo: 'Eliminar bloqueo', mensaje: '¿Eliminar este bloqueo? Ese horario volverá a estar disponible para agendar.', confirmarTexto: 'Eliminar', peligroso: true })
+    if (!ok) return
+    try { await api(`/agenda/bloqueos/${id}`, { method: 'DELETE' }); cargar() }
+    catch (err) { toast.error(err.message || 'No se pudo eliminar el bloqueo.') }
   }
 
   const setHorario = (i, k, v) => setHorarios(horarios.map((h, j) => j === i ? { ...h, [k]: v } : h))

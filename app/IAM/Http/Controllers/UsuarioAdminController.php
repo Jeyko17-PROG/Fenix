@@ -24,20 +24,32 @@ use App\Billing\Infrastructure\Persistence\Eloquent\CreditPackage;
  */
 class UsuarioAdminController extends Controller
 {
-    /** Conteo de clientes por propietario (saltando el filtro multi-inquilino). */
+    /** Conteo de clientes (no eliminados) por propietario (saltando el filtro multi-inquilino). */
     private function clientesPorOwner(): \Illuminate\Support\Collection
     {
-        return Cliente::withoutGlobalScopes()
+        return Cliente::withoutGlobalScope(\App\Shared\Infrastructure\Persistence\Scopes\OwnerScope::class)
+            ->selectRaw('owner_id, COUNT(*) as total')
+            ->groupBy('owner_id')
+            ->pluck('total', 'owner_id');
+    }
+
+    /** Conteo de facturas EMITIDAS (no cotizaciones, no eliminadas) por propietario. */
+    private function facturasPorOwner(): \Illuminate\Support\Collection
+    {
+        return \App\Billing\Infrastructure\Persistence\Eloquent\Factura::withoutGlobalScope(\App\Shared\Infrastructure\Persistence\Scopes\OwnerScope::class)
+            ->where('estado', '!=', 'BORRADOR')
             ->selectRaw('owner_id, COUNT(*) as total')
             ->groupBy('owner_id')
             ->pluck('total', 'owner_id');
     }
 
     /** Serializa un usuario con sus datos de plan/estado/clientes. */
-    private function serializar(User $u, \Illuminate\Support\Collection $conteos): array
+    private function serializar(User $u, \Illuminate\Support\Collection $conteos, \Illuminate\Support\Collection $conteosFacturas): array
     {
         $limite = $u->limiteClientesEfectivo();
         $usados = (int) ($conteos[$u->id] ?? 0);
+        $limiteFacturas = $u->limiteFacturasEfectivo();
+        $usadasFacturas = (int) ($conteosFacturas[$u->id] ?? 0);
 
         return [
             'id' => $u->id,
@@ -64,6 +76,10 @@ class UsuarioAdminController extends Controller
             'limite_manual' => $u->limite_clientes,
             'clientes_usados' => $usados,
             'clientes_disponibles' => $limite === PHP_INT_MAX ? null : max(0, $limite - $usados),
+            'limite_facturas' => $limiteFacturas === PHP_INT_MAX ? null : $limiteFacturas,
+            'limite_facturas_manual' => $u->limite_facturas,
+            'facturas_usadas' => $usadasFacturas,
+            'facturas_disponibles' => $limiteFacturas === PHP_INT_MAX ? null : max(0, $limiteFacturas - $usadasFacturas),
             'fecha_registro' => $u->created_at?->toIso8601String(),
             'ultimo_acceso' => $u->ultimo_acceso?->toIso8601String(),
         ];
@@ -87,9 +103,10 @@ class UsuarioAdminController extends Controller
 
         $usuarios = $q->orderByDesc('id')->get();
         $conteos = $this->clientesPorOwner();
+        $conteosFacturas = $this->facturasPorOwner();
 
         return response()->json(
-            $usuarios->map(fn ($u) => $this->serializar($u, $conteos))->values()
+            $usuarios->map(fn ($u) => $this->serializar($u, $conteos, $conteosFacturas))->values()
         );
     }
 
@@ -98,9 +115,10 @@ class UsuarioAdminController extends Controller
     {
         $usuarios = User::with('plan')->orderByDesc('id')->get();
         $conteos = $this->clientesPorOwner();
+        $conteosFacturas = $this->facturasPorOwner();
 
         return response()->json(
-            $usuarios->map(fn ($u) => $this->serializar($u, $conteos))->values()
+            $usuarios->map(fn ($u) => $this->serializar($u, $conteos, $conteosFacturas))->values()
         );
     }
 
@@ -119,8 +137,9 @@ class UsuarioAdminController extends Controller
 
         $usuario->update($data);
         $conteos = $this->clientesPorOwner();
+        $conteosFacturas = $this->facturasPorOwner();
 
-        return response()->json($this->serializar($usuario->fresh('rol', 'plan'), $conteos));
+        return response()->json($this->serializar($usuario->fresh('rol', 'plan'), $conteos, $conteosFacturas));
     }
 
     /** Crea un empleado/administrador de sucursal dentro del workspace del usuario autenticado. */
@@ -170,7 +189,8 @@ class UsuarioAdminController extends Controller
         Auditoria::registrar($request->user()->id, $user->id, 'USUARIO', 'CREAR_EMPLEADO', null, $bodega->nombre);
 
         $conteos = $this->clientesPorOwner();
-        return response()->json($this->serializar($user->fresh('rol', 'plan', 'bodega'), $conteos), 201);
+        $conteosFacturas = $this->facturasPorOwner();
+        return response()->json($this->serializar($user->fresh('rol', 'plan', 'bodega'), $conteos, $conteosFacturas), 201);
     }
 
     /**
@@ -215,7 +235,8 @@ class UsuarioAdminController extends Controller
         Auditoria::registrar($request->user()->id, $user->id, 'USUARIO', 'CREAR_EMPLEADO_RAPIDO', null, $bodega?->nombre ?? null);
 
         $conteos = $this->clientesPorOwner();
-        return response()->json($this->serializar($user->fresh('rol', 'plan', 'bodega'), $conteos), 201);
+        $conteosFacturas = $this->facturasPorOwner();
+        return response()->json($this->serializar($user->fresh('rol', 'plan', 'bodega'), $conteos, $conteosFacturas), 201);
     }
 
     public function cambiarEstado(Request $request, User $usuario): JsonResponse
@@ -258,7 +279,8 @@ class UsuarioAdminController extends Controller
         Auditoria::registrar($request->user()->id, $usuario->id, 'ESTADO', null, $anterior, $data['estado']);
 
         $conteos = $this->clientesPorOwner();
-        return response()->json($this->serializar($usuario->fresh('rol', 'plan'), $conteos));
+        $conteosFacturas = $this->facturasPorOwner();
+        return response()->json($this->serializar($usuario->fresh('rol', 'plan'), $conteos, $conteosFacturas));
     }
 
     public function cambiarPlan(Request $request, User $usuario): JsonResponse
@@ -283,25 +305,36 @@ class UsuarioAdminController extends Controller
         );
 
         $conteos = $this->clientesPorOwner();
-        return response()->json($this->serializar($usuario->fresh('rol', 'plan'), $conteos));
+        $conteosFacturas = $this->facturasPorOwner();
+        return response()->json($this->serializar($usuario->fresh('rol', 'plan'), $conteos, $conteosFacturas));
     }
 
     public function cambiarLimite(Request $request, User $usuario): JsonResponse
     {
         $data = $request->validate([
             // null = volver a usar el límite del plan.
-            'limite_clientes' => ['nullable', 'integer', 'min:0'],
+            'limite_clientes' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            'limite_facturas' => ['sometimes', 'nullable', 'integer', 'min:0'],
         ]);
 
-        $anterior = $usuario->limite_clientes;
-        $usuario->update(['limite_clientes' => $data['limite_clientes'] ?? null]);
-        // Multiempresa: el límite vive en la empresa GOBERNANTE del grupo.
-        $usuario->empresaDeCobro()?->empresaGobernante()?->update(['limite_clientes' => $data['limite_clientes'] ?? null]);
+        if ($request->has('limite_clientes')) {
+            $anterior = $usuario->limite_clientes;
+            $usuario->update(['limite_clientes' => $data['limite_clientes'] ?? null]);
+            // Multiempresa: el límite vive en la empresa GOBERNANTE del grupo.
+            $usuario->empresaDeCobro()?->empresaGobernante()?->update(['limite_clientes' => $data['limite_clientes'] ?? null]);
+            Auditoria::registrar($request->user()->id, $usuario->id, 'LIMITE', null, (string) $anterior, (string) ($data['limite_clientes'] ?? 'plan'));
+        }
 
-        Auditoria::registrar($request->user()->id, $usuario->id, 'LIMITE', null, (string) $anterior, (string) ($data['limite_clientes'] ?? 'plan'));
+        if ($request->has('limite_facturas')) {
+            $anteriorFacturas = $usuario->limite_facturas;
+            $usuario->update(['limite_facturas' => $data['limite_facturas'] ?? null]);
+            $usuario->empresaDeCobro()?->empresaGobernante()?->update(['limite_facturas' => $data['limite_facturas'] ?? null]);
+            Auditoria::registrar($request->user()->id, $usuario->id, 'LIMITE_FACTURAS', null, (string) $anteriorFacturas, (string) ($data['limite_facturas'] ?? 'plan'));
+        }
 
         $conteos = $this->clientesPorOwner();
-        return response()->json($this->serializar($usuario->fresh('rol', 'plan'), $conteos));
+        $conteosFacturas = $this->facturasPorOwner();
+        return response()->json($this->serializar($usuario->fresh('rol', 'plan'), $conteos, $conteosFacturas));
     }
 
     /**

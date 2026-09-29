@@ -113,4 +113,21 @@ class OrdenCompraController extends Controller
 
         return $orden->fresh()->load('detalles.producto:id,sku,nombre');
     }
+
+    /**
+     * Elimina una orden que todavía no fue recibida (creada por error, datos
+     * incorrectos...). Una vez RECIBIDA ya movió inventario real, así que no
+     * se puede borrar sin más — requeriría una devolución/ajuste aparte.
+     */
+    public function destroy(OrdenCompra $orden)
+    {
+        if ($orden->estado === 'RECIBIDA') {
+            throw ValidationException::withMessages(['estado' => ['La orden ya fue recibida y generó movimientos de inventario: no se puede eliminar.']]);
+        }
+
+        $orden->detalles()->delete();
+        $orden->delete();
+
+        return response()->json(['message' => 'Orden de compra eliminada.']);
+    }
 }

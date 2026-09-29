@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client'
 import { useAuth } from '../context/AuthContext'
+import { useDialogo } from '../context/DialogoContext'
+import { useToast } from '../context/ToastContext'
 import { aNumero } from '../utils/numero'
 
 const COP = (n) => '$' + Number(n ?? 0).toLocaleString('es-CO')
@@ -193,6 +195,7 @@ function Ordenes({ esMecanico, esLavadero, esBarberia, iconoOperario = '👨‍�
   const [abierta, setAbierta] = useState(null) // orden en detalle
   // El lavadero ve un Kanban por defecto; puede alternar a la lista clásica.
   const [vista, setVista] = useState(esLavadero ? 'kanban' : 'lista')
+  const toast = useToast()
 
   const cargar = useCallback(async () => {
     setCargando(true)
@@ -202,6 +205,8 @@ function Ordenes({ esMecanico, esLavadero, esBarberia, iconoOperario = '👨‍�
       if (buscar) p.set('buscar', buscar)
       const r = await api(`/ordenes-servicio?${p}`)
       setOrdenes(r.data ?? [])
+    } catch (err) {
+      toast.error(err.message || 'No se pudieron cargar las órdenes de servicio.')
     } finally { setCargando(false) }
   }, [estado, buscar])
 
@@ -211,7 +216,7 @@ function Ordenes({ esMecanico, esLavadero, esBarberia, iconoOperario = '👨‍�
     try {
       await api(`/ordenes-servicio/${orden.id}`, { method: 'PUT', body: { estado: nuevoEstado } })
       cargar()
-    } catch (err) { alert(err.message || 'No se pudo actualizar el estado.') }
+    } catch (err) { toast.error(err.message || 'No se pudo actualizar el estado.') }
   }
 
   return (
@@ -352,6 +357,11 @@ function ModalCrearOrden({ onClose, onCreada }) {
   )
   const [guardando, setGuardando] = useState(false)
   const [errorCarga, setErrorCarga] = useState('')
+  // Kilometraje, gasolina, checklist de entrada y fecha estimada quedan
+  // colapsados por defecto: no hacen falta para crear la orden rápido, un
+  // mecánico apurado no debería tener que ver 8 campos para registrar algo.
+  const [masDetalles, setMasDetalles] = useState(false)
+  const toast = useToast()
 
   useEffect(() => {
     api('/empleados').then((r) => setEmpleados(r.data ?? [])).catch(() => {})
@@ -379,9 +389,9 @@ function ModalCrearOrden({ onClose, onCreada }) {
 
   async function crear(e) {
     e.preventDefault()
-    if (!clienteSel?.id) return alert('Selecciona el cliente.')
+    if (!clienteSel?.id) return toast.error('Selecciona el cliente.')
     if (vehiculoObligatorio && !form.asset_vehicle_id && !nuevoVehiculo) {
-      return alert('Este tipo de negocio requiere el vehículo/equipo del cliente.')
+      return toast.error('Este tipo de negocio requiere el vehículo/equipo del cliente.')
     }
     setGuardando(true)
     try {
@@ -411,7 +421,7 @@ function ModalCrearOrden({ onClose, onCreada }) {
       } })
       onCreada(orden.id)
     } catch (err) {
-      alert(err.message || 'No se pudo crear la orden.')
+      toast.error(err.message || 'No se pudo crear la orden.')
     } finally { setGuardando(false) }
   }
 
@@ -440,7 +450,11 @@ function ModalCrearOrden({ onClose, onCreada }) {
             <label className="block text-sm text-slate-300">Cliente * (escribe para buscar)
               <input value={buscarCliente} onChange={(e) => setBuscarCliente(e.target.value)} placeholder="Nombre, cédula, teléfono…" className="input mt-1" autoFocus />
               <div className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-slate-700 divide-y divide-slate-800">
-                {resultados.length === 0 && <p className="px-3 py-2 text-xs text-slate-500">Sin resultados. Crea el cliente primero en el módulo Clientes.</p>}
+                {resultados.length === 0 && (
+                  <p className="px-3 py-2 text-xs text-slate-500">
+                    {buscarCliente.trim() === '' ? 'Escribe para buscar un cliente.' : 'Sin resultados. Crea el cliente primero en el módulo Clientes.'}
+                  </p>
+                )}
                 {resultados.map((c) => (
                   <button type="button" key={c.id} onClick={() => { setClienteSel(c); setBuscarCliente('') }}
                     className="w-full text-left px-3 py-2 text-sm hover:bg-slate-800">
@@ -512,46 +526,58 @@ function ModalCrearOrden({ onClose, onCreada }) {
             </select>
           </label>
 
-          {/* Campos según el tipo de negocio */}
-          {esTallerVehiculos && (
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block text-sm text-slate-300">Kilometraje actual
-                <input type="text" inputMode="numeric" value={form.km_entrada} onChange={set('km_entrada')} className="input mt-1" placeholder="Ej: 45.300" />
-              </label>
-              <label className="block text-sm text-slate-300">Nivel de gasolina: <b>{form.nivel_gasolina === '' ? '—' : `${form.nivel_gasolina}%`}</b>
-                <input type="range" min="0" max="100" step="5" value={form.nivel_gasolina === '' ? 50 : form.nivel_gasolina}
-                  onChange={set('nivel_gasolina')} className="mt-3 w-full accent-emerald-500" />
-              </label>
-            </div>
-          )}
-          {esServicioTecnico && (
-            <label className="block text-sm text-slate-300">Accesorios con los que se recibe
-              <input value={form.accesorios} onChange={set('accesorios')} className="input mt-1" placeholder="Ej: cargador, estuche, cable USB…" />
-            </label>
-          )}
-
-          {/* Checklist de entrada: estado visual del vehículo al recibirlo (talleres/lavadero) */}
-          {checklist.length > 0 && (
-            <div>
-              <p className="text-sm text-slate-300 mb-1.5">Checklist de entrada</p>
-              <div className="grid grid-cols-2 gap-1.5 rounded-lg border border-slate-700 bg-slate-800/30 p-3">
-                {checklist.map((it, i) => (
-                  <label key={it.item} className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
-                    <input type="checkbox" checked={it.ok} onChange={() => toggleChecklist(i)} className="accent-emerald-500" />
-                    {it.item}
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-
           <label className="block text-sm text-slate-300">{esLavadero || usaCatalogoServicios ? 'Notas adicionales (opcional)' : esServicioTecnico ? 'Problema reportado / estado visual del equipo' : 'Diagnóstico / falla reportada por el cliente'}
             <textarea value={form.descripcion_trabajo} onChange={set('descripcion_trabajo')} rows="3" className="input mt-1" placeholder="Ej: cambio de aceite, revisión de frenos…" />
           </label>
 
-          <label className="block text-sm text-slate-300">Fecha estimada de entrega
-            <input type="datetime-local" value={form.fecha_entrega_estimada} onChange={set('fecha_entrega_estimada')} className="input mt-1" />
-          </label>
+          {/* Kilometraje, gasolina, accesorios, checklist de entrada y fecha
+              estimada: útiles pero no hacen falta para crear la orden ya - quedan
+              colapsados para no saturar el formulario del día a día. */}
+          {(esTallerVehiculos || esServicioTecnico || checklist.length > 0) && (
+            <div className="rounded-lg border border-slate-700">
+              <button type="button" onClick={() => setMasDetalles((v) => !v)}
+                className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800/40">
+                <span>⚙️ Más detalles de recepción {esTallerVehiculos || esLavadero ? '(kilometraje, checklist…)' : '(accesorios…)'}</span>
+                <span className="text-slate-500 text-xs">{masDetalles ? '▲' : '▼'}</span>
+              </button>
+              {masDetalles && (
+                <div className="space-y-3 border-t border-slate-700 p-3">
+                  {esTallerVehiculos && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <label className="block text-sm text-slate-300">Kilometraje actual
+                        <input type="text" inputMode="numeric" value={form.km_entrada} onChange={set('km_entrada')} className="input mt-1" placeholder="Ej: 45.300" />
+                      </label>
+                      <label className="block text-sm text-slate-300">Nivel de gasolina: <b>{form.nivel_gasolina === '' ? '—' : `${form.nivel_gasolina}%`}</b>
+                        <input type="range" min="0" max="100" step="5" value={form.nivel_gasolina === '' ? 50 : form.nivel_gasolina}
+                          onChange={set('nivel_gasolina')} className="mt-3 w-full accent-emerald-500" />
+                      </label>
+                    </div>
+                  )}
+                  {esServicioTecnico && (
+                    <label className="block text-sm text-slate-300">Accesorios con los que se recibe
+                      <input value={form.accesorios} onChange={set('accesorios')} className="input mt-1" placeholder="Ej: cargador, estuche, cable USB…" />
+                    </label>
+                  )}
+                  {checklist.length > 0 && (
+                    <div>
+                      <p className="text-sm text-slate-300 mb-1.5">Checklist de entrada</p>
+                      <div className="grid grid-cols-2 gap-1.5 rounded-lg border border-slate-700 bg-slate-800/30 p-3">
+                        {checklist.map((it, i) => (
+                          <label key={it.item} className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
+                            <input type="checkbox" checked={it.ok} onChange={() => toggleChecklist(i)} className="accent-emerald-500" />
+                            {it.item}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <label className="block text-sm text-slate-300">Fecha estimada de entrega
+                    <input type="datetime-local" value={form.fecha_entrega_estimada} onChange={set('fecha_entrega_estimada')} className="input mt-1" />
+                  </label>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="rounded-lg bg-slate-700 hover:bg-slate-600 px-4 py-2 text-sm">Cancelar</button>
@@ -572,18 +598,22 @@ function ModalOrden({ id, esMecanico, onClose }) {
   const esBarberia = tipoNegocio === 'barberia'
   const esTatuajes = tipoNegocio === 'tatuajes'
   const esAccesoriosMotos = tipoNegocio === 'accesorios_motos'
-  // Solo estos 3 rubros: aquí sí tiene sentido avisar "ven a retirar tu
-  // vehículo" (taller_general incluye a "otro" en otras partes de este
-  // archivo, pero aquí se pidió específicamente sin ese genérico).
-  const esTallerGenerico = ['taller_motos', 'taller_carros', 'taller_general'].includes(tipoNegocio)
+  // Rubros donde tiene sentido avisar "ven a retirar tu vehículo": talleres,
+  // lavadero (ya lavaste el carro, avisas que está listo) y accesorios de
+  // motos (instalaste el accesorio, avisas que puede recogerla). Barbería y
+  // tatuajes usan agenda de citas, no "recoger un vehículo", así que quedan
+  // fuera.
+  const avisaVehiculoListo = ['taller_motos', 'taller_carros', 'taller_general', 'lavadero', 'accesorios_motos'].includes(tipoNegocio)
   const iconoOperario = esLavadero ? '🧼' : esBarberia ? '💈' : esTatuajes ? '🎨' : esAccesoriosMotos ? '🔧' : '👨‍🔧'
   const [orden, setOrden] = useState(null)
   const [productos, setProductos] = useState([])
   const [empleados, setEmpleados] = useState([])
   const [detalle, setDetalle] = useState({ producto_id: '', cantidad: 1, precio_unitario: '', operables_employee_id: '' })
   const [guardando, setGuardando] = useState(false)
+  const { confirmar } = useDialogo()
+  const toast = useToast()
 
-  const cargar = useCallback(() => api(`/ordenes-servicio/${id}`).then(setOrden).catch((e) => { alert(e.message); onClose() }), [id, onClose])
+  const cargar = useCallback(() => api(`/ordenes-servicio/${id}`).then(setOrden).catch((e) => { toast.error(e.message); onClose() }), [id, onClose])
   useEffect(() => { cargar() }, [cargar])
   useEffect(() => {
     api('/productos').then((r) => setProductos(r.data ?? [])).catch(() => {})
@@ -593,14 +623,41 @@ function ModalOrden({ id, esMecanico, onClose }) {
   if (!orden) return null
   const editable = !['facturado', 'cancelado'].includes(orden.estado)
 
+  // Mensaje de "vehículo listo" reutilizado tanto para el aviso automático
+  // (al marcar listo) como para el botón manual de reenvío.
+  function mensajeListoWhatsApp(ord) {
+    const vehiculo = ord.asset_vehicle
+      ? `${ord.asset_vehicle.marca} ${ord.asset_vehicle.modelo}${ord.asset_vehicle.placa_identificador ? ` (${ord.asset_vehicle.placa_identificador})` : ''}`
+      : 'vehículo'
+    return `Hola ${ord.cliente?.nombre_completo ?? ''}, tu ${vehiculo} ya quedó listo, puedes venir a retirarlo. 🔧`
+  }
+  function urlWhatsAppListo(ord) {
+    return `https://wa.me/${ord.cliente.telefono.replace(/\D+/g, '')}?text=${encodeURIComponent(mensajeListoWhatsApp(ord))}`
+  }
+  // Abre el WhatsApp del cliente automáticamente al quedar listo, sin
+  // depender de que el empleado se acuerde de tocar el botón aparte.
+  function avisarWhatsAppSiAplica(ord) {
+    if (avisaVehiculoListo && ord?.cliente?.telefono) window.open(urlWhatsAppListo(ord), '_blank')
+  }
+
   async function cambiarEstado(estado) {
-    try { await api(`/ordenes-servicio/${id}`, { method: 'PUT', body: { estado } }); cargar() }
-    catch (err) { alert(err.message) }
+    try {
+      const yaEstabaListo = orden.estado === 'listo'
+      await api(`/ordenes-servicio/${id}`, { method: 'PUT', body: { estado } })
+      if (estado === 'listo' && !yaEstabaListo) avisarWhatsAppSiAplica(orden)
+      cargar()
+    }
+    catch (err) { toast.error(err.message) }
   }
 
   async function completar() {
-    try { await api(`/ordenes-servicio/${id}/completar`, { method: 'POST', body: {} }); cargar() }
-    catch (err) { alert(err.message) }
+    try {
+      const yaEstabaListo = orden.estado === 'listo'
+      await api(`/ordenes-servicio/${id}/completar`, { method: 'POST', body: {} })
+      if (!yaEstabaListo) avisarWhatsAppSiAplica(orden)
+      cargar()
+    }
+    catch (err) { toast.error(err.message) }
   }
 
   function alElegirProducto(pid) {
@@ -622,13 +679,27 @@ function ModalOrden({ id, esMecanico, onClose }) {
       } })
       setDetalle({ producto_id: '', cantidad: 1, precio_unitario: '', operables_employee_id: '' })
       cargar()
-    } catch (err) { alert(err.message) } finally { setGuardando(false) }
+    } catch (err) { toast.error(err.message) } finally { setGuardando(false) }
   }
 
   async function quitarDetalle(did) {
-    if (!confirm('¿Quitar este ítem y devolver el stock?')) return
+    const ok = await confirmar({ titulo: 'Quitar ítem', mensaje: '¿Quitar este ítem y devolver el stock?', confirmarTexto: 'Quitar', peligroso: true })
+    if (!ok) return
     try { await api(`/ordenes-servicio/${id}/detalles/${did}`, { method: 'DELETE' }); cargar() }
-    catch (err) { alert(err.message) }
+    catch (err) { toast.error(err.message) }
+  }
+
+  async function eliminarOrden() {
+    const ok = await confirmar({
+      titulo: 'Eliminar orden',
+      mensaje: `¿Eliminar la orden ${orden.numero_orden}? Devuelve al inventario los repuestos usados y no se puede deshacer.`,
+      confirmarTexto: 'Eliminar', peligroso: true,
+    })
+    if (!ok) return
+    try {
+      await api(`/ordenes-servicio/${id}`, { method: 'DELETE' })
+      onClose()
+    } catch (err) { toast.error(err.message || 'No se pudo eliminar la orden.') }
   }
 
   return (
@@ -661,7 +732,14 @@ function ModalOrden({ id, esMecanico, onClose }) {
               </div>
             )}
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white text-xl">✕</button>
+          <div className="flex items-center gap-3">
+            {!esMecanico && orden.estado !== 'facturado' && (
+              <button onClick={eliminarOrden} className="text-xs rounded-lg bg-red-900/60 hover:bg-red-800 px-3 py-1.5 font-semibold whitespace-nowrap">
+                🗑️ Eliminar orden
+              </button>
+            )}
+            <button onClick={onClose} className="text-slate-400 hover:text-white text-xl">✕</button>
+          </div>
         </div>
 
         {orden.descripcion_trabajo && (
@@ -683,18 +761,16 @@ function ModalOrden({ id, esMecanico, onClose }) {
                 {ESTADOS[e].label}
               </button>
             ))}
-            {esTallerGenerico && orden.cliente?.telefono && (
+            {avisaVehiculoListo && orden.cliente?.telefono && (
               <a
-                href={`https://wa.me/${orden.cliente.telefono.replace(/\D+/g, '')}?text=${encodeURIComponent(
-                  `Hola ${orden.cliente?.nombre_completo ?? ''}, tu ${orden.asset_vehicle ? `${orden.asset_vehicle.marca} ${orden.asset_vehicle.modelo}${orden.asset_vehicle.placa_identificador ? ` (${orden.asset_vehicle.placa_identificador})` : ''}` : 'vehículo'} ya quedó listo, puedes venir a retirarlo. 🔧`
-                )}`}
+                href={urlWhatsAppListo(orden)}
                 target="_blank" rel="noreferrer"
                 className="ml-auto text-xs rounded-lg bg-green-700 hover:bg-green-600 px-3 py-1.5 font-semibold"
               >
-                💬 Avisar por WhatsApp
+                {orden.estado === 'listo' ? '💬 Reenviar aviso por WhatsApp' : '💬 Avisar por WhatsApp'}
               </a>
             )}
-            <button onClick={completar} className={`text-xs rounded-lg bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 font-semibold ${esTallerGenerico && orden.cliente?.telefono ? '' : 'ml-auto'}`}>
+            <button onClick={completar} className={`text-xs rounded-lg bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 font-semibold ${avisaVehiculoListo && orden.cliente?.telefono ? '' : 'ml-auto'}`}>
               ✓ Completar (registra hoja de vida)
             </button>
           </div>
@@ -820,6 +896,7 @@ function ModalVehiculo({ onClose, onGuardado }) {
   const [clientes, setClientes] = useState([])
   const [tipos, setTipos] = useState([])
   const [form, setForm] = useState({ cliente_id: '', tipo_activo: 'moto', placa_identificador: '', marca: '', modelo: '', anio: '', color: '' })
+  const toast = useToast()
 
   useEffect(() => {
     api('/clientes').then((r) => setClientes(r.data ?? [])).catch(() => {})
@@ -837,7 +914,7 @@ function ModalVehiculo({ onClose, onGuardado }) {
         color: form.color || null,
       } })
       onGuardado()
-    } catch (err) { alert(err.message || 'No se pudo guardar.') }
+    } catch (err) { toast.error(err.message || 'No se pudo guardar.') }
   }
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
@@ -890,14 +967,17 @@ function Empleados({ esLavadero, esBarberia, esTatuajes, esAccesoriosMotos }) {
   const [lista, setLista] = useState([])
   const [editando, setEditando] = useState(null) // null | 'nuevo' | empleado
   const icono = esLavadero ? '🧼' : esBarberia ? '💈' : esTatuajes ? '🎨' : esAccesoriosMotos ? '🔧' : '👨‍🔧'
+  const { confirmar } = useDialogo()
+  const toast = useToast()
 
   const cargar = useCallback(() => api('/empleados').then((r) => setLista(r.data ?? [])).catch(() => {}), [])
   useEffect(() => { cargar() }, [cargar])
 
   async function eliminar(m) {
-    if (!confirm(`¿Eliminar a ${m.nombre} ${m.apellido}?`)) return
+    const ok = await confirmar({ titulo: 'Eliminar empleado', mensaje: `¿Eliminar a ${m.nombre} ${m.apellido}?`, confirmarTexto: 'Eliminar', peligroso: true })
+    if (!ok) return
     try { await api(`/empleados/${m.id}`, { method: 'DELETE' }); cargar() }
-    catch (err) { alert(err.message) }
+    catch (err) { toast.error(err.message) }
   }
 
   return (
@@ -955,6 +1035,7 @@ function ModalEmpleado({ empleado, esLavadero, esBarberia, esTatuajes, esAccesor
   })
   const [galeria, setGaleria] = useState(empleado?.galeria ?? [])
   const [subiendoFoto, setSubiendoFoto] = useState(false)
+  const toast = useToast()
 
   useEffect(() => { api('/empleados/tipos').then((r) => setTipos(r.tipos ?? [])).catch(() => {}) }, [])
 
@@ -967,7 +1048,7 @@ function ModalEmpleado({ empleado, esLavadero, esBarberia, esTatuajes, esAccesor
       const item = await api(`/empleados/${empleado.id}/galeria`, { method: 'POST', body: fd, isForm: true })
       setGaleria((g) => [...g, item])
     } catch (err) {
-      alert(err.message || 'No se pudo subir la foto.')
+      toast.error(err.message || 'No se pudo subir la foto.')
     } finally {
       setSubiendoFoto(false)
     }
@@ -978,7 +1059,7 @@ function ModalEmpleado({ empleado, esLavadero, esBarberia, esTatuajes, esAccesor
     try {
       await api(`/empleados/${empleado.id}/galeria/${imagenId}`, { method: 'DELETE' })
       setGaleria((g) => g.filter((f) => f.id !== imagenId))
-    } catch (err) { alert(err.message || 'No se pudo quitar la foto.') }
+    } catch (err) { toast.error(err.message || 'No se pudo quitar la foto.') }
   }
 
   async function guardar(e) {
@@ -992,7 +1073,7 @@ function ModalEmpleado({ empleado, esLavadero, esBarberia, esTatuajes, esAccesor
       if (empleado?.id) await api(`/empleados/${empleado.id}`, { method: 'PUT', body })
       else await api('/empleados', { method: 'POST', body })
       onGuardado()
-    } catch (err) { alert(err.message || 'No se pudo guardar.') }
+    } catch (err) { toast.error(err.message || 'No se pudo guardar.') }
   }
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })

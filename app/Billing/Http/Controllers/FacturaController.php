@@ -79,6 +79,13 @@ class FacturaController extends Controller
             throw ValidationException::withMessages(['monto' => ["El abono (\${$data['monto']}) supera el saldo pendiente (\${$saldoActual})."]]);
         }
 
+        // Confirmar una cotización (BORRADOR) la convierte en una factura real:
+        // recién aquí debe respetar el límite de facturas del plan (antes no
+        // contaba, por eso pudo crearse sin bloquear).
+        if ($factura->estado === 'BORRADOR' && $resp = $this->verificarLimiteFacturas($request->user())) {
+            return $resp;
+        }
+
         $pago = DB::transaction(function () use ($data, $factura, $request) {
             // Cotización (BORRADOR): el primer abono real es lo que la convierte
             // en una venta de verdad - recién aquí se descuenta el inventario y
@@ -151,6 +158,12 @@ class FacturaController extends Controller
             'es_cotizacion' => ['nullable', 'boolean'],
         ]);
         $esCotizacion = (bool) ($data['es_cotizacion'] ?? false);
+
+        // Una cotización no cuenta para el límite de facturas del plan (solo las
+        // ventas reales cuentan) - por eso solo se verifica cuando no lo es.
+        if (! $esCotizacion && $resp = $this->verificarLimiteFacturas($request->user())) {
+            return $resp;
+        }
 
         $factura = DB::transaction(function () use ($data, $request, $esCotizacion) {
             $bodegaId = $this->resolverBodegaFactura($request, $data['bodega_id'] ?? null);
@@ -588,6 +601,10 @@ class FacturaController extends Controller
             'propina' => ['nullable', 'numeric', 'min:0'],
         ]);
 
+        if ($resp = $this->verificarLimiteFacturas($request->user())) {
+            return $resp;
+        }
+
         $factura = DB::transaction(function () use ($data, $request, $serviceOrder) {
             // Pago por uso (modo prepago): cada factura consume 1 crédito.
             $this->cobrarUsoPorFactura($request->user());
@@ -642,6 +659,37 @@ class FacturaController extends Controller
         if ($request->user()?->esMecanico() || $request->user()?->esInstalador()) {
             abort(403, 'Tu rol no tiene acceso a la facturación.');
         }
+    }
+
+    /**
+     * Restricción por plan: bloquea si ya se alcanzó el límite de facturas
+     * (cotizaciones/BORRADOR no cuentan - ver Empresa::facturasUsadas()).
+     * Mismo formato de respuesta que ClienteController/CitaController (403 +
+     * limite_alcanzado) para que el frontend redirija a /planes igual que con
+     * esos otros límites - ver resources/src/api/client.js. Devuelve la
+     * respuesta a enviar (o null si hay cupo); se llama ANTES de abrir la
+     * transacción de cada acción, así que el caller puede simplemente
+     * "return" el resultado sin dejar nada a medio crear.
+     */
+    private function verificarLimiteFacturas(\App\IAM\Infrastructure\Persistence\Eloquent\User $user): ?\Illuminate\Http\JsonResponse
+    {
+        if ($user->esSuperAdmin()) {
+            return null;
+        }
+
+        $limite = $user->limiteFacturasEfectivo();
+        $usadas = $user->facturasUsadas();
+
+        if ($usadas >= $limite) {
+            return response()->json([
+                'message' => 'Ha alcanzado el límite de facturas permitido por su plan. Comuníquese con el administrador para ampliar su licencia.',
+                'limite_alcanzado' => true,
+                'usados' => $usadas,
+                'limite' => $limite,
+            ], 403);
+        }
+
+        return null;
     }
 
     /**

@@ -3,6 +3,8 @@
 namespace App\Billing\Application;
 
 use App\Billing\Infrastructure\Persistence\Eloquent\Factura;
+use App\Shared\Application\Notificador;
+use App\Shared\Infrastructure\NodeRenderService;
 use App\Shared\Infrastructure\StorageUrl;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { api } from '../api/client'
 import GestorDocumentos from '../components/GestorDocumentos'
 import { useFeatures } from '../context/FeaturesContext'
+import { useDialogo } from '../context/DialogoContext'
+import { useToast } from '../context/ToastContext'
 
 const VACIO = {
   razon_social: '', tipo_documento: 'NIT', numero_documento: '',
@@ -17,10 +19,16 @@ export default function Proveedores() {
   const [abierto, setAbierto] = useState(false)
   const [docsDe, setDocsDe] = useState(null)
   const [leyendo, setLeyendo] = useState(false)
+  const { confirmar } = useDialogo()
+  const toast = useToast()
 
   async function cargar() {
-    const data = await api('/proveedores')
-    setLista(data.data ?? data)
+    try {
+      const data = await api('/proveedores')
+      setLista(data.data ?? data)
+    } catch (err) {
+      setError(err.message || 'No se pudieron cargar los proveedores. Verifica que tu plan lo incluya.')
+    }
   }
   useEffect(() => { cargar() }, [])
 
@@ -46,9 +54,12 @@ export default function Proveedores() {
   }
 
   async function eliminar(id) {
-    if (!confirm('¿Eliminar proveedor?')) return
-    await api(`/proveedores/${id}`, { method: 'DELETE' })
-    cargar()
+    const ok = await confirmar({ titulo: 'Eliminar proveedor', mensaje: '¿Eliminar este proveedor?', confirmarTexto: 'Eliminar', peligroso: true })
+    if (!ok) return
+    try {
+      await api(`/proveedores/${id}`, { method: 'DELETE' })
+      cargar()
+    } catch (err) { toast.error(err.message || 'No se pudo eliminar el proveedor.') }
   }
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
@@ -87,6 +98,10 @@ export default function Proveedores() {
         <button onClick={() => { setForm(VACIO); setEditId(null); setAbierto(true) }}
           className="rounded-lg bg-emerald-600 hover:bg-emerald-500 px-4 py-2 text-sm font-semibold">+ Nuevo</button>
       </div>
+
+      {!abierto && lista.length === 0 && error && (
+        <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm text-red-300">{error}</div>
+      )}
 
       {abierto && (
         <form onSubmit={guardar} className="mb-6 rounded-xl border border-slate-800 bg-slate-800/50 p-5 grid sm:grid-cols-2 gap-3">

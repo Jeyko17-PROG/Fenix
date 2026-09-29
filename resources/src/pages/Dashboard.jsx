@@ -4,6 +4,8 @@ import { QRCodeCanvas } from 'qrcode.react'
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { api, descargarArchivo } from '../api/client'
 import { useAuth } from '../context/AuthContext'
+import { useFeatures } from '../context/FeaturesContext'
+import { useToast } from '../context/ToastContext'
 import { getReservasUrl, esUrlLocal } from '../utils/publicUrl'
 
 const COLORES = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6']
@@ -132,6 +134,57 @@ function AppMovilBanner() {
   )
 }
 
+// Checklist de primeros pasos: solo para cuentas nuevas, hasta que completen
+// los 4 pasos o decidan cerrarla (se recuerda por dispositivo, no molesta cada vez).
+const OCULTO_KEY = 'logix_primeros_pasos_oculto'
+function PrimerosPasos({ datos }) {
+  const [oculto, setOculto] = useState(() => {
+    try { return localStorage.getItem(OCULTO_KEY) === '1' } catch { return false }
+  })
+  if (!datos || datos.completo || oculto) return null
+
+  const hechos = datos.pasos.filter((p) => p.listo).length
+  const total = datos.pasos.length
+
+  function cerrar() {
+    setOculto(true)
+    try { localStorage.setItem(OCULTO_KEY, '1') } catch { /* modo privado: no pasa nada, solo no se recuerda */ }
+  }
+
+  return (
+    <div className="mb-6 rounded-2xl border border-emerald-800/40 bg-emerald-500/5 p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <p className="font-semibold">🚀 Primeros pasos ({hechos}/{total})</p>
+          <p className="text-xs text-slate-400">Completa esto para sacarle todo el provecho a Fénix.</p>
+        </div>
+        <button onClick={cerrar} className="text-slate-500 hover:text-slate-300 text-sm shrink-0" title="Ocultar (no se vuelve a mostrar)">✕</button>
+      </div>
+      <div className="h-1.5 w-full rounded-full bg-slate-800 overflow-hidden mb-4">
+        <div className="h-full bg-emerald-500 transition-all" style={{ width: `${(hechos / total) * 100}%` }} />
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {datos.pasos.map((p) => (
+          <Link key={p.clave} to={p.listo ? '#' : p.to}
+            onClick={(e) => p.listo && e.preventDefault()}
+            className={`flex items-start gap-2.5 rounded-xl border p-3 text-sm transition ${
+              p.listo ? 'border-slate-800 bg-slate-900/40 opacity-60' : 'border-slate-800 bg-slate-900/60 hover:border-emerald-700'
+            }`}>
+            <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs ${p.listo ? 'bg-emerald-600' : 'bg-slate-700'}`}>
+              {p.listo ? '✓' : ''}
+            </span>
+            <span className="min-w-0">
+              <span className={`block font-medium ${p.listo ? 'line-through text-slate-500' : ''}`}>{p.titulo}</span>
+              <span className="block text-xs text-slate-500">{p.descripcion}</span>
+              {!p.listo && <span className="mt-1 inline-block text-xs font-semibold text-emerald-400">{p.accion} →</span>}
+            </span>
+          </Link>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 const TONOS = {
   slate: 'bg-slate-500/10 text-slate-300',
   sky: 'bg-sky-500/10 text-sky-400',
@@ -169,17 +222,22 @@ function Seccion({ titulo, children }) {
 
 export default function Dashboard() {
   const { user } = useAuth()
+  const { visible } = useFeatures()
   const [data, setData] = useState(null)
+  const [error, setError] = useState('')
   const [descargando, setDescargando] = useState(false)
+  const toast = useToast()
 
   useEffect(() => {
-    api('/reportes/dashboard').then(setData).catch(() => {})
+    api('/reportes/dashboard').then(setData).catch((err) => setError(err.message || 'No se pudieron cargar los indicadores.'))
   }, [])
 
   async function exportar() {
     setDescargando(true)
     try {
       await descargarArchivo('/reportes/inventario/excel', 'inventario.xlsx')
+    } catch (err) {
+      toast.error(err.message || 'No se pudo exportar el inventario.')
     } finally {
       setDescargando(false)
     }
@@ -196,16 +254,23 @@ export default function Dashboard() {
           <h1 className="text-2xl font-bold">Hola, {user?.name} 👋</h1>
           <p className="text-slate-400 text-sm">Rol: <span className="text-emerald-400">{user?.rol?.nombre ?? 'Sin rol'}</span></p>
         </div>
-        <button onClick={exportar} disabled={descargando}
-          className="rounded-lg bg-sky-600 hover:bg-sky-500 disabled:opacity-50 px-4 py-2 text-sm font-semibold">
-          {descargando ? 'Generando…' : '⬇ Exportar Excel'}
-        </button>
+        {visible('exportacion') && (
+          <button onClick={exportar} disabled={descargando}
+            className="rounded-lg bg-sky-600 hover:bg-sky-500 disabled:opacity-50 px-4 py-2 text-sm font-semibold">
+            {descargando ? 'Generando…' : '⬇ Exportar Excel'}
+          </button>
+        )}
       </div>
 
       {!data ? (
-        <p className="text-slate-500">Cargando indicadores…</p>
+        error ? (
+          <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm text-red-300">{error}</div>
+        ) : (
+          <p className="text-slate-500">Cargando indicadores…</p>
+        )
       ) : (
         <>
+          <PrimerosPasos datos={data.primeros_pasos} />
           <AppMovilBanner />
           {data.cuenta && <PanelCuenta cuenta={data.cuenta} slug={user?.reservas_slug} />}
           <Seccion titulo="Resumen de hoy">
@@ -213,7 +278,7 @@ export default function Dashboard() {
               <Kpi icon="📅" tono="sky" titulo="Citas hoy" valor={r.citas_hoy ?? 0} to="/agenda" />
               <Kpi icon="⏳" tono="amber" titulo="Citas pendientes" valor={r.citas_pendientes ?? 0} to="/agenda" />
               <Kpi icon="📊" tono="violet" titulo="Ocupación agenda" valor={`${r.ocupacion_pct ?? 0}%`} sub="del horario laboral de hoy" />
-              <Kpi icon="🧾" tono="emerald" titulo="Facturación hoy" valor={money(r.facturacion_hoy)} to="/facturacion" />
+              {visible('facturacion') && <Kpi icon="🧾" tono="emerald" titulo="Facturación hoy" valor={money(r.facturacion_hoy)} to="/facturacion" />}
             </div>
           </Seccion>
 
@@ -221,20 +286,27 @@ export default function Dashboard() {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <Kpi icon="👥" tono="sky" titulo="Clientes activos" valor={r.clientes_activos ?? 0} to="/clientes" />
               <Kpi icon="✨" tono="violet" titulo="Nuevos este mes" valor={r.clientes_nuevos_mes ?? 0} to="/clientes" />
-              <Kpi icon="💰" tono="emerald" titulo="Facturación del mes" valor={money(r.facturacion_mes)} to="/facturacion" />
-              <Kpi icon="🚚" tono="slate" titulo="Proveedores" valor={r.proveedores} to="/proveedores" />
+              {visible('facturacion') && <Kpi icon="💰" tono="emerald" titulo="Facturación del mes" valor={money(r.facturacion_mes)} to="/facturacion" />}
+              {visible('proveedores') && <Kpi icon="🚚" tono="slate" titulo="Proveedores" valor={r.proveedores} to="/proveedores" />}
             </div>
           </Seccion>
 
-          <Seccion titulo="Inventario">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <Kpi icon="📦" tono="sky" titulo="Productos" valor={r.productos} to="/productos" />
-              <Kpi icon="🏭" tono="slate" titulo="Bodegas" valor={r.bodegas} to="/bodegas" />
-              <Kpi icon="🏷️" tono="emerald" titulo="Valor inventario" valor={money(r.valor_inventario)} to="/inventario" />
-              <Kpi icon={r.alertas > 0 ? '⚠️' : '✅'} tono={r.alertas > 0 ? 'red' : 'emerald'} titulo="Alertas de stock"
-                valor={r.alertas} sub={r.alertas > 0 ? 'productos por reponer' : 'todo en orden'} to="/inventario" />
-            </div>
-          </Seccion>
+          {/* Solo si el plan de verdad le da acceso al menú de Inventario/Productos -
+              antes se mostraban estos números aunque no hubiera ni un enlace en el
+              menú para ir a administrarlos, lo cual confundía más que ayudaba. */}
+          {(visible('productos') || visible('inventario')) && (
+            <Seccion titulo="Inventario">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                {visible('productos') && <Kpi icon="📦" tono="sky" titulo="Productos" valor={r.productos} to="/productos" />}
+                {visible('inventario') && <Kpi icon="🏭" tono="slate" titulo="Bodegas" valor={r.bodegas} to="/bodegas" />}
+                {visible('inventario') && <Kpi icon="🏷️" tono="emerald" titulo="Valor inventario" valor={money(r.valor_inventario)} to="/inventario" />}
+                {visible('inventario') && (
+                  <Kpi icon={r.alertas > 0 ? '⚠️' : '✅'} tono={r.alertas > 0 ? 'red' : 'emerald'} titulo="Alertas de stock"
+                    valor={r.alertas} sub={r.alertas > 0 ? 'productos por reponer' : 'todo en orden'} to="/inventario" />
+                )}
+              </div>
+            </Seccion>
+          )}
 
           <div className="grid lg:grid-cols-2 gap-6">
             <div className="rounded-xl border border-slate-800 bg-slate-800/50 p-4">

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
+import { useDialogo } from '../context/DialogoContext'
+import { useToast } from '../context/ToastContext'
 
 const ESTADO_COLOR = {
   ACTIVADA: 'text-emerald-400',
@@ -19,6 +21,8 @@ export default function ControlFuncionalidades() {
   const [error, setError] = useState('')
   const [guardando, setGuardando] = useState('')
   const [params] = useSearchParams()
+  const { confirmar } = useDialogo()
+  const toast = useToast()
 
   useEffect(() => {
     api('/admin/empresas').then((lista) => {
@@ -41,14 +45,15 @@ export default function ControlFuncionalidades() {
     try {
       const r = await api(`/admin/empresas/${sel}/modulos`, { method: 'PUT', body: { clave, estado } })
       setData(r)
-    } catch (err) { alert(err.message || 'No se pudo guardar.') }
+    } catch (err) { toast.error(err.message || 'No se pudo guardar.') }
     finally { setGuardando('') }
   }
 
   async function aplicarPlan() {
-    if (!confirm('¿Restablecer todos los módulos a los valores por defecto del plan y tipo de negocio de la empresa?')) return
+    const ok = await confirmar({ titulo: 'Restablecer módulos', mensaje: '¿Restablecer todos los módulos a los valores por defecto del plan y tipo de negocio de la empresa?', confirmarTexto: 'Restablecer' })
+    if (!ok) return
     try { setData(await api(`/admin/empresas/${sel}/modulos/aplicar-plan`, { method: 'POST', body: {} })) }
-    catch (err) { alert(err.message || 'Error.') }
+    catch (err) { toast.error(err.message || 'Error.') }
   }
 
   return (

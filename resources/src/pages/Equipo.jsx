@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
 import { useAuth } from '../context/AuthContext'
+import { useToast } from '../context/ToastContext'
 
 const ESTADO_COLOR = {
   ACTIVO: 'bg-emerald-500/15 text-emerald-400',
@@ -33,6 +34,7 @@ export default function Equipo() {
   const [creando, setCreando] = useState(false)
   const [creado, setCreado] = useState(null) // { email, password } tras crear, para mostrar una sola vez
   const [verRol, setVerRol] = useState(null) // rol cuyo detalle de permisos se muestra
+  const toast = useToast()
 
   // Solo los roles que aplican al rubro de este negocio (ver ROLES_POR_RUBRO).
   const roles = rolesTodos.filter((r) => rolAplica(r.nombre, tipoNegocio))
@@ -73,14 +75,14 @@ export default function Equipo() {
     try {
       await api(`/equipo/usuarios/${u.id}`, { method: 'PUT', body: { rol_id: Number(rolId) } })
       cargar()
-    } catch (err) { alert(err.message || 'No se pudo cambiar el rol.') }
+    } catch (err) { toast.error(err.message || 'No se pudo cambiar el rol.') }
   }
 
   async function cambiarEstado(u, estado) {
     try {
       await api(`/equipo/usuarios/${u.id}/estado`, { method: 'POST', body: { estado } })
       cargar()
-    } catch (err) { alert(err.message || 'No se pudo cambiar el estado.') }
+    } catch (err) { toast.error(err.message || 'No se pudo cambiar el estado.') }
   }
 
   return (

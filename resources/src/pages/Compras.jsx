@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
+import { useDialogo } from '../context/DialogoContext'
+import { useToast } from '../context/ToastContext'
 import { aNumero } from '../utils/numero'
 
 export default function Compras() {
+  const { confirmar } = useDialogo()
+  const toast = useToast()
   const [ordenes, setOrdenes] = useState([])
   const [proveedores, setProveedores] = useState([])
   const [productos, setProductos] = useState([])
@@ -14,15 +18,17 @@ export default function Compras() {
   const [lineas, setLineas] = useState([{ producto_id: '', cantidad: '', precio_unitario: '' }])
 
   async function cargar() {
-    const data = await api('/ordenes-compra')
-    setOrdenes(data.data ?? data)
+    try {
+      const data = await api('/ordenes-compra')
+      setOrdenes(data.data ?? data)
+    } catch (err) { toast.error(err.message || 'No se pudieron cargar las órdenes de compra.') }
   }
   useEffect(() => {
     cargar()
-    api('/proveedores').then((d) => setProveedores(d.data ?? d))
-    api('/productos').then((d) => setProductos(d.data ?? d))
-    api('/bodegas').then(setBodegas)
-  }, [])
+    api('/proveedores').then((d) => setProveedores(d.data ?? d)).catch((err) => toast.error(err.message || 'No se pudieron cargar los proveedores.'))
+    api('/productos').then((d) => setProductos(d.data ?? d)).catch(() => setProductos([]))
+    api('/bodegas').then(setBodegas).catch(() => setBodegas([]))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   function setLinea(i, k, v) {
     const copia = [...lineas]
@@ -46,9 +52,17 @@ export default function Compras() {
   }
 
   async function recibir(id) {
-    if (!confirm('¿Recibir la orden? Esto sumará las cantidades al inventario.')) return
+    const ok = await confirmar({ titulo: 'Recibir orden', mensaje: '¿Recibir la orden? Esto sumará las cantidades al inventario.', confirmarTexto: 'Recibir' })
+    if (!ok) return
     await api(`/ordenes-compra/${id}/recibir`, { method: 'POST' })
     cargar()
+  }
+
+  async function eliminarOrden(o) {
+    const ok = await confirmar({ titulo: 'Eliminar orden', mensaje: `¿Eliminar la orden #${o.id}? No se puede deshacer.`, confirmarTexto: 'Eliminar', peligroso: true })
+    if (!ok) return
+    try { await api(`/ordenes-compra/${o.id}`, { method: 'DELETE' }); cargar() }
+    catch (err) { toast.error(err.message || 'No se pudo eliminar la orden.') }
   }
 
   async function generarPdf(id) {
@@ -110,14 +124,15 @@ export default function Compras() {
               <tr key={o.id} className="border-t border-slate-800">
                 <td className="p-3">{o.id}</td>
                 <td className="p-3">{o.proveedor?.razon_social}</td>
-                <td className="p-3 text-slate-400">{o.fecha}</td>
+                <td className="p-3 text-slate-400">{o.fecha ? new Date(o.fecha).toLocaleDateString('es-CO') : '—'}</td>
                 <td className="p-3 text-right">${Number(o.total).toLocaleString()}</td>
                 <td className="p-3">
                   <span className={`text-xs rounded-full px-2 py-0.5 ${o.estado === 'RECIBIDA' ? 'bg-emerald-600' : 'bg-slate-600'}`}>{o.estado}</span>
                 </td>
                 <td className="p-3 text-right whitespace-nowrap">
                   {o.estado !== 'RECIBIDA' && <button onClick={() => recibir(o.id)} className="text-emerald-400 hover:underline mr-3">Recibir</button>}
-                  <button onClick={() => generarPdf(o.id)} className="text-sky-400 hover:underline">PDF</button>
+                  <button onClick={() => generarPdf(o.id)} className="text-sky-400 hover:underline mr-3">PDF</button>
+                  {o.estado !== 'RECIBIDA' && <button onClick={() => eliminarOrden(o)} className="text-red-400 hover:underline">Eliminar</button>}
                 </td>
               </tr>
             ))}

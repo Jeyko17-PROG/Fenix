@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
+import { useDialogo } from '../context/DialogoContext'
 
 const VACIO = { nombre: '', descripcion: '', precio: '', duracion_min: 30, aplica_moto: true, aplica_carro: true, icono: '', activo: true }
 
@@ -9,6 +10,7 @@ export default function PlanesLavado() {
   const [editando, setEditando] = useState(null) // id del plan en edición, o null para "nuevo"
   const [error, setError] = useState('')
   const [guardando, setGuardando] = useState(false)
+  const { confirmar } = useDialogo()
 
   async function cargar() {
     try { setPlanes(await api('/planes-lavado')) } catch { /* sesión expirada: client.js redirige al login */ }
@@ -36,7 +38,8 @@ export default function PlanesLavado() {
   }
 
   async function eliminar(id) {
-    if (!confirm('¿Eliminar este plan de lavado?')) return
+    const ok = await confirmar({ titulo: 'Eliminar plan', mensaje: '¿Eliminar este plan de lavado?', confirmarTexto: 'Eliminar', peligroso: true })
+    if (!ok) return
     await api(`/planes-lavado/${id}`, { method: 'DELETE' })
     cargar()
   }

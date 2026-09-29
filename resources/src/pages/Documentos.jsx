@@ -1,30 +1,41 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
+import { useToast } from '../context/ToastContext'
 
 const COLORES = { PENDIENTE: 'bg-amber-600', FIRMADO: 'bg-emerald-600', RECHAZADO: 'bg-red-600' }
 
 export default function Documentos() {
   const [docs, setDocs] = useState([])
+  const [error, setError] = useState('')
+  const toast = useToast()
 
   async function cargar() {
-    const data = await api('/documentos')
-    setDocs(data.data ?? data)
+    try {
+      const data = await api('/documentos')
+      setDocs(data.data ?? data)
+    } catch (err) {
+      setError(err.message || 'No se pudieron cargar los documentos. Verifica que tu plan lo incluya.')
+    }
   }
   useEffect(() => { cargar() }, [])
 
   async function iniciarFirma(docId) {
-    await api(`/documentos/${docId}/firma`, { method: 'POST' })
-    cargar()
+    try { await api(`/documentos/${docId}/firma`, { method: 'POST' }); cargar() }
+    catch (err) { toast.error(err.message || 'No se pudo iniciar la firma.') }
   }
   async function cambiarEstado(firmaId, estado) {
-    await api(`/firmas/${firmaId}`, { method: 'PATCH', body: { estado } })
-    cargar()
+    try { await api(`/firmas/${firmaId}`, { method: 'PATCH', body: { estado } }); cargar() }
+    catch (err) { toast.error(err.message || 'No se pudo cambiar el estado de la firma.') }
   }
 
   return (
     <div>
       <h1 className="text-2xl font-bold mb-2">Documentos</h1>
       <p className="text-slate-400 text-sm mb-6">Repositorio digital y firma electrónica (estructura lista para integración con la DIAN).</p>
+
+      {docs.length === 0 && error && (
+        <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm text-red-300">{error}</div>
+      )}
 
       <div className="overflow-x-auto rounded-xl border border-slate-800">
         <table className="w-full text-sm">

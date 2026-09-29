@@ -3,10 +3,11 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { useFeatures } from '../context/FeaturesContext'
+import { useToast } from '../context/ToastContext'
 
 const COP = (n) => '$' + Number(n).toLocaleString('es-CO')
 
-const PLANTILLA = { id: null, nombre: '', precio_mensual: 0, limite_clientes: 200, limite_citas: 200, incluye: [], funcionalidades: [], activo: true, orden: 99 }
+const PLANTILLA = { id: null, nombre: '', precio_mensual: 0, limite_clientes: 200, limite_citas: 200, limite_facturas: 200, incluye: [], funcionalidades: [], activo: true, orden: 99 }
 
 export default function Planes() {
   const { user } = useAuth()
@@ -18,6 +19,7 @@ export default function Planes() {
   const [pagando, setPagando] = useState(null)
   const [paquetes, setPaquetes] = useState([])
   const [creditos, setCreditos] = useState({})
+  const toast = useToast()
   const [searchParams] = useSearchParams()
   const vencida = searchParams.get('vencida') === '1' || user?.facturacion_saas?.membresia_vencida
   const limiteAlcanzado = searchParams.get('limite') === '1'
@@ -35,6 +37,8 @@ export default function Planes() {
       ])
       setPaquetes(pkgs || [])
       setCreditos(creds || {})
+    } catch (err) {
+      toast.error(err.message || 'No se pudieron cargar los planes.')
     } finally { setCargando(false) }
   }
   useEffect(() => { cargar() }, [])
@@ -46,7 +50,7 @@ export default function Planes() {
       const r = await api(`/planes/${p.id}/checkout`, { method: 'POST' })
       window.location.href = r.checkoutUrl
     } catch (err) {
-      alert(err.message || 'No se pudo iniciar el pago.')
+      toast.error(err.message || 'No se pudo iniciar el pago.')
     } finally { setPagando(null) }
   }
 
@@ -57,14 +61,14 @@ export default function Planes() {
       const r = await api('/credits/create-session', { method: 'POST', body: { package_id: pkg.id } })
       window.location.href = r.checkoutUrl
     } catch (err) {
-      alert(err.message || 'No se pudo iniciar la recarga.')
+      toast.error(err.message || 'No se pudo iniciar la recarga.')
     } finally { setPagando(null) }
   }
 
   async function guardar(p) {
     const body = {
       nombre: p.nombre, precio_mensual: Number(p.precio_mensual),
-      limite_clientes: Number(p.limite_clientes), limite_citas: Number(p.limite_citas),
+      limite_clientes: Number(p.limite_clientes), limite_citas: Number(p.limite_citas), limite_facturas: Number(p.limite_facturas),
       incluye: p.incluye,
       funcionalidades: p.funcionalidades, activo: p.activo, orden: Number(p.orden) || 0,
     }
@@ -72,7 +76,7 @@ export default function Planes() {
       if (p.id) await api(`/admin/planes/${p.id}`, { method: 'PUT', body })
       else await api('/admin/planes', { method: 'POST', body })
       setEditando(null); cargar()
-    } catch (err) { alert(err.message || 'No se pudo guardar.') }
+    } catch (err) { toast.error(err.message || 'No se pudo guardar.') }
   }
 
   return (
@@ -226,6 +230,9 @@ function ModalPlan({ plan, catalogo, onClose, onGuardar }) {
             </label>
             <label className="block text-sm text-slate-300">Límite de citas
               <input type="number" min="1" value={form.limite_citas} onChange={set('limite_citas')} className="input mt-1" required />
+            </label>
+            <label className="block text-sm text-slate-300">Límite de facturas
+              <input type="number" min="1" value={form.limite_facturas} onChange={set('limite_facturas')} className="input mt-1" required />
             </label>
           </div>
 

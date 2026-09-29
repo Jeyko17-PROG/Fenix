@@ -43,6 +43,7 @@ class User extends Authenticatable
         'membresia_vence_at',
         'limite_clientes',
         'limite_citas',
+        'limite_facturas',
         'foto_perfil_url',
         'telefono',
         'activo',
@@ -317,7 +318,10 @@ class User extends Authenticatable
         if ($empresa = $this->empresaDeCobro()) {
             return $empresa->clientesUsados();
         }
-        return Cliente::withoutGlobalScopes()->where('owner_id', $this->id)->count();
+        // withoutGlobalScope (no plural) para no quitar también el filtro de
+        // soft-delete: un cliente eliminado no debe seguir contando.
+        return Cliente::withoutGlobalScope(\App\Shared\Infrastructure\Persistence\Scopes\OwnerScope::class)
+            ->where('owner_id', $this->id)->count();
     }
 
     /**
@@ -344,7 +348,41 @@ class User extends Authenticatable
         if ($empresa = $this->empresaDeCobro()) {
             return $empresa->citasUsadas();
         }
-        return Cita::withoutGlobalScopes()->where('owner_id', $this->id)->count();
+        return Cita::withoutGlobalScope(\App\Shared\Infrastructure\Persistence\Scopes\OwnerScope::class)
+            ->where('owner_id', $this->id)->count();
+    }
+
+    /**
+     * FACHADA — Límite efectivo de facturas: el de la empresa (override o plan),
+     * con respaldo al override/plan propio del usuario si aún no tiene empresa.
+     */
+    public function limiteFacturasEfectivo(): int
+    {
+        if ($this->esSuperAdmin()) {
+            return PHP_INT_MAX;
+        }
+        if ($empresa = $this->empresaDeCobro()) {
+            return $empresa->limiteFacturasEfectivo();
+        }
+        if (! is_null($this->limite_facturas)) {
+            return (int) $this->limite_facturas;
+        }
+        return (int) ($this->plan?->limite_facturas ?? 0);
+    }
+
+    /**
+     * Facturas EMITIDAS (no cotizaciones) del negocio (empresa si ya la tiene,
+     * si no por owner_id), o de todo el grupo vinculado.
+     */
+    public function facturasUsadas(): int
+    {
+        if ($empresa = $this->empresaDeCobro()) {
+            return $empresa->facturasUsadas();
+        }
+        return \App\Billing\Infrastructure\Persistence\Eloquent\Factura::withoutGlobalScope(\App\Shared\Infrastructure\Persistence\Scopes\OwnerScope::class)
+            ->where('owner_id', $this->id)
+            ->where('estado', '!=', 'BORRADOR')
+            ->count();
     }
 
     /**

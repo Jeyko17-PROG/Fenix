@@ -101,7 +101,78 @@ class ReporteController extends Controller
             'top_rotacion' => $topRotacion,
             'mas_vendidos' => $masVendidos,
             'cuenta' => $this->datosCuenta($user),
+            'primeros_pasos' => $this->primerosPasos($user),
         ]);
+    }
+
+    /**
+     * Checklist de primeros pasos para una cuenta nueva: qué le falta hacer
+     * para empezar a usar el sistema de verdad (no solo "tiene productos en
+     * la base de datos", que un negocio nuevo nunca tiene). El widget se
+     * oculta solo cuando ya completó todo - el frontend decide si además el
+     * usuario lo cerró manualmente (eso se recuerda por dispositivo, no aquí).
+     */
+    private function primerosPasos(?\App\IAM\Infrastructure\Persistence\Eloquent\User $user): ?array
+    {
+        if (! $user || $user->esSuperAdmin()) {
+            return null;
+        }
+
+        $empresa = $user->empresaDeCobro();
+
+        // Cada paso solo tiene sentido si el plan de la cuenta incluye ese
+        // módulo - de lo contrario le mandaríamos a un plan Gratuito a tocar
+        // "Ir a Facturación" y chocar contra un 403 de funcionalidad bloqueada.
+        $pasos = collect([
+            [
+                'clave' => 'negocio',
+                'feature' => null,
+                'titulo' => 'Personaliza tu negocio',
+                'descripcion' => 'Agrega el logo y los datos de contacto que verán tus clientes.',
+                'listo' => (bool) ($empresa?->logo_url || $empresa?->logo_emoji),
+                'to' => '/configuracion',
+                'accion' => 'Personalizar',
+            ],
+            [
+                'clave' => 'producto',
+                'feature' => 'productos',
+                'titulo' => 'Agrega tu primer producto o servicio',
+                'descripcion' => 'Lo necesitas para poder facturar o agendar citas.',
+                'listo' => Producto::count() > 0,
+                'to' => '/productos',
+                'accion' => 'Agregar producto',
+            ],
+            [
+                'clave' => 'cliente',
+                'feature' => 'clientes',
+                'titulo' => 'Agrega tu primer cliente',
+                'descripcion' => 'El "Consumidor Final" es solo para ventas de mostrador; agrega uno real.',
+                'listo' => Cliente::where('nombre_completo', '!=', 'Consumidor Final')->exists(),
+                'to' => '/clientes',
+                'accion' => 'Agregar cliente',
+            ],
+            [
+                'clave' => 'factura',
+                'feature' => 'facturacion',
+                'titulo' => 'Registra tu primera venta',
+                'descripcion' => 'Emite una factura de prueba para ver cómo se ve tu PDF.',
+                'listo' => Factura::where('estado', '!=', 'BORRADOR')->exists(),
+                'to' => '/facturacion',
+                'accion' => 'Ir a Facturación',
+            ],
+        ])
+            ->filter(fn ($p) => ! $p['feature'] || \App\IAM\Application\Funcionalidades::estadoEfectivo($user, $p['feature']) !== 'DESACTIVADA')
+            ->map(fn ($p) => collect($p)->except('feature')->all())
+            ->values();
+
+        if ($pasos->isEmpty()) {
+            return null;
+        }
+
+        return [
+            'completo' => $pasos->every(fn ($p) => $p['listo']),
+            'pasos' => $pasos->all(),
+        ];
     }
 
     /** Información de la cuenta: plan, límite de clientes y consumo (para el dashboard). */

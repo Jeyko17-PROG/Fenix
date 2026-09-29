@@ -55,6 +55,12 @@ export function AuthProvider({ children }) {
     return api('/forgot-password', { method: 'POST', body: { email } })
   }
 
+  // Reenvía el código de activación por correo (self-service): no hace
+  // falta esperar a que el administrador lo mande a mano.
+  async function reenviarCodigoActivacion(email) {
+    return api('/reenviar-codigo-activacion', { method: 'POST', body: { email } })
+  }
+
   async function resetPassword(payload) {
     return api('/reset-password', { method: 'POST', body: payload })
   }
@@ -96,7 +102,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, setUser, cargando, login, register, activar, forgotPassword, resetPassword, logout, misNegocios, vincularNegocio, crearNegocio, desvincularNegocio, entrarNegocio }}>
+    <AuthContext.Provider value={{ user, setUser, cargando, login, register, activar, forgotPassword, resetPassword, reenviarCodigoActivacion, logout, misNegocios, vincularNegocio, crearNegocio, desvincularNegocio, entrarNegocio }}>
       {children}
     </AuthContext.Provider>
   )

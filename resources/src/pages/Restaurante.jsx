@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client'
+import { useDialogo } from '../context/DialogoContext'
+import { useToast } from '../context/ToastContext'
 import { aNumero } from '../utils/numero'
 
 const COP = (n) => '$' + Number(n ?? 0).toLocaleString('es-CO')
@@ -47,6 +49,8 @@ function PlanoMesas() {
   const [cargando, setCargando] = useState(true)
   const [creando, setCreando] = useState(false)
   const [comandaAbierta, setComandaAbierta] = useState(null) // {mesaId, comandaId}
+  const { confirmar } = useDialogo()
+  const toast = useToast()
 
   const cargar = useCallback(() => {
     setCargando(true)
@@ -58,7 +62,15 @@ function PlanoMesas() {
     try {
       const c = await api(`/mesas/${mesa.id}/comanda`, { method: 'POST', body: {} })
       setComandaAbierta({ mesaId: mesa.id, comandaId: c.id })
-    } catch (err) { alert(err.message || 'No se pudo abrir la mesa.') }
+    } catch (err) { toast.error(err.message || 'No se pudo abrir la mesa.') }
+  }
+
+  async function eliminarMesa(mesa, e) {
+    e.stopPropagation()
+    const ok = await confirmar({ titulo: 'Eliminar mesa', mensaje: `¿Eliminar "${mesa.nombre}"? No se puede deshacer.`, confirmarTexto: 'Eliminar', peligroso: true })
+    if (!ok) return
+    try { await api(`/mesas/${mesa.id}`, { method: 'DELETE' }); cargar() }
+    catch (err) { toast.error(err.message || 'No se pudo eliminar la mesa.') }
   }
 
   return (
@@ -67,18 +79,25 @@ function PlanoMesas() {
         {mesas.map((m) => {
           const est = ESTADO_MESA[m.estado] ?? ESTADO_MESA.LIBRE
           return (
-            <button key={m.id} onClick={() => abrirMesa(m)}
-              className={`rounded-2xl border p-5 text-left transition ${est.clase}`}>
-              <div className="flex items-center justify-between">
-                <span className="text-2xl">🍽️</span>
-                <span className="text-xs rounded-full bg-slate-900/60 px-2 py-0.5">{est.label}</span>
-              </div>
-              <p className="font-bold mt-2">{m.nombre}</p>
-              <p className="text-xs text-slate-400">{m.capacidad} puestos</p>
-              {m.comanda_abierta && (
-                <p className="text-sm font-semibold text-emerald-400 mt-2">{COP(m.comanda_abierta.total)} · {m.comanda_abierta.items_count} ítem(s)</p>
-              )}
-            </button>
+            <div key={m.id} className="relative">
+              <button onClick={() => abrirMesa(m)}
+                className={`w-full rounded-2xl border p-5 text-left transition ${est.clase}`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-2xl">🍽️</span>
+                  <span className="text-xs rounded-full bg-slate-900/60 px-2 py-0.5">{est.label}</span>
+                </div>
+                <p className="font-bold mt-2">{m.nombre}</p>
+                <p className="text-xs text-slate-400">{m.capacidad} puestos</p>
+                {m.comanda_abierta && (
+                  <p className="text-sm font-semibold text-emerald-400 mt-2">{COP(m.comanda_abierta.total)} · {m.comanda_abierta.items_count} ítem(s)</p>
+                )}
+              </button>
+              {/* Siempre visible (no solo al pasar el mouse): en tablet de restaurante no hay hover. */}
+              <button onClick={(e) => eliminarMesa(m, e)} title="Eliminar mesa"
+                className="absolute top-2 right-2 rounded-lg bg-slate-950/70 hover:bg-red-900/80 text-slate-400 hover:text-red-200 text-xs w-6 h-6 flex items-center justify-center transition">
+                🗑️
+              </button>
+            </div>
           )
         })}
         {!cargando && mesas.length === 0 && (
@@ -103,6 +122,7 @@ function ModalMesa({ onClose, onGuardada }) {
   const [nombre, setNombre] = useState('')
   const [capacidad, setCapacidad] = useState(4)
   const [guardando, setGuardando] = useState(false)
+  const toast = useToast()
 
   async function guardar(e) {
     e.preventDefault()
@@ -110,7 +130,7 @@ function ModalMesa({ onClose, onGuardada }) {
     try {
       await api('/mesas', { method: 'POST', body: { nombre, capacidad: Number(capacidad) || 4 } })
       onGuardada()
-    } catch (err) { alert(err.message || 'No se pudo crear la mesa.') } finally { setGuardando(false) }
+    } catch (err) { toast.error(err.message || 'No se pudo crear la mesa.') } finally { setGuardando(false) }
   }
 
   return (
@@ -149,6 +169,8 @@ function ModalComanda({ comandaId, onClose }) {
   const [cobrando, setCobrando] = useState(false)
   const [metodoPago, setMetodoPago] = useState('EFECTIVO')
   const [propina, setPropina] = useState('')
+  const { confirmar } = useDialogo()
+  const toast = useToast()
 
   const cargar = useCallback(() => api(`/comandas/${comandaId}`).then(setComanda).catch(() => {}), [comandaId])
   useEffect(() => { cargar() }, [cargar])
@@ -174,12 +196,14 @@ function ModalComanda({ comandaId, onClose }) {
       } })
       setDescripcion(''); setProductoId(''); setCantidad(1); setPrecio(''); setNotas('')
       cargar()
-    } catch (err) { alert(err.message || 'No se pudo agregar el ítem.') } finally { setGuardando(false) }
+    } catch (err) { toast.error(err.message || 'No se pudo agregar el ítem.') } finally { setGuardando(false) }
   }
 
   async function quitar(itemId) {
+    const ok = await confirmar({ titulo: 'Quitar ítem', mensaje: '¿Quitar este ítem de la comanda?', confirmarTexto: 'Quitar', peligroso: true })
+    if (!ok) return
     try { await api(`/comandas/${comandaId}/items/${itemId}`, { method: 'DELETE' }); cargar() }
-    catch (err) { alert(err.message) }
+    catch (err) { toast.error(err.message) }
   }
 
   async function cobrar() {
@@ -190,13 +214,14 @@ function ModalComanda({ comandaId, onClose }) {
         propina: propina ? aNumero(propina) : null,
       } })
       onClose()
-    } catch (err) { alert(err.message || 'No se pudo cobrar la comanda.') } finally { setCobrando(false) }
+    } catch (err) { toast.error(err.message || 'No se pudo cobrar la comanda.') } finally { setCobrando(false) }
   }
 
   async function cancelar() {
-    if (!confirm('¿Cancelar la comanda? La mesa quedará libre sin generar factura.')) return
+    const ok = await confirmar({ titulo: 'Cancelar mesa', mensaje: '¿Cancelar la comanda? La mesa quedará libre sin generar factura.', confirmarTexto: 'Cancelar comanda', peligroso: true })
+    if (!ok) return
     try { await api(`/comandas/${comandaId}/cancelar`, { method: 'POST' }); onClose() }
-    catch (err) { alert(err.message) }
+    catch (err) { toast.error(err.message) }
   }
 
   if (!comanda) return null
@@ -309,6 +334,7 @@ function ModalComanda({ comandaId, onClose }) {
 function Cocina() {
   const [comandas, setComandas] = useState([])
   const [cargando, setCargando] = useState(true)
+  const toast = useToast()
 
   const cargar = useCallback(() => {
     return api('/cocina/comandas').then(setComandas).catch(() => {}).finally(() => setCargando(false))
@@ -326,7 +352,7 @@ function Cocina() {
     try {
       await api(`/cocina/items/${item.id}/estado`, { method: 'PUT', body: { estado_cocina: siguiente } })
       cargar()
-    } catch (err) { alert(err.message) }
+    } catch (err) { toast.error(err.message) }
   }
 
   if (cargando) return <p className="text-slate-500">Cargando cocina…</p>

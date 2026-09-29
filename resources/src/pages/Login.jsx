@@ -6,11 +6,11 @@ import { api } from '../api/client'
 const VACIO = {
   name: '', tipo_documento: 'CC', numero_documento: '', telefono: '',
   email: '', password: '', password_confirmation: '',
-  nombre_empresa: '', tipo_negocio_id: '', codigo: '',
+  nombre_empresa: '', tipo_negocio_id: '', tipo_negocio_otro: '', codigo: '',
 }
 
 export default function Login() {
-  const { login, register, activar, forgotPassword, misNegocios } = useAuth()
+  const { login, register, activar, forgotPassword, reenviarCodigoActivacion, misNegocios } = useAuth()
   const navigate = useNavigate()
   const [params] = useSearchParams()
   // Modo inicial según el botón pulsado en la pantalla de bienvenida (?modo=registro).
@@ -21,6 +21,7 @@ export default function Login() {
   const [enviando, setEnviando] = useState(false)
   const [tiposNegocio, setTiposNegocio] = useState([])
   const [mostrarBienvenida, setMostrarBienvenida] = useState(false)
+  const [reenviando, setReenviando] = useState(false)
 
   // Catálogo de tipos de negocio para el registro (define los módulos del POS).
   useEffect(() => {
@@ -29,8 +30,25 @@ export default function Login() {
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
 
+  // "Otro" en el catálogo: pide describir a qué se dedica el negocio de verdad,
+  // en vez de dejarlo como un cajón genérico sin explicar.
+  const esTipoOtro = tiposNegocio.find((t) => String(t.id) === String(form.tipo_negocio_id))?.clave === 'otro'
+
   function cambiarModo(m) {
     setModo(m); setError(''); setOk('')
+  }
+
+  async function reenviarCodigo() {
+    if (!form.email) { setError('Escribe primero tu correo para poder reenviarte el código.'); return }
+    setReenviando(true); setError(''); setOk('')
+    try {
+      const r = await reenviarCodigoActivacion(form.email)
+      setOk(r.message)
+    } catch (err) {
+      setError(err.message || 'No se pudo reenviar el código.')
+    } finally {
+      setReenviando(false)
+    }
   }
 
   // Si la cuenta tiene 2+ negocios vinculados, deja elegir cuál usar antes
@@ -63,6 +81,7 @@ export default function Login() {
           password_confirmation: form.password_confirmation,
           nombre_empresa: form.nombre_empresa || form.name,
           tipo_negocio_id: form.tipo_negocio_id,
+          tipo_negocio_otro: esTipoOtro ? form.tipo_negocio_otro : null,
         })
         if (data.pendiente_activacion) {
           // Cuenta bloqueada desde el registro: pasa a la pantalla de
@@ -149,7 +168,8 @@ export default function Login() {
                     <option value="PAS">Pasaporte</option>
                   </select>
                   <div className="flex-1">
-                    <Campo icono="🪪" placeholder="Número de documento" value={form.numero_documento} onChange={set('numero_documento')} />
+                    <Campo icono="🪪" placeholder={form.tipo_documento === 'NIT' ? 'NIT (ej: 900123456 o 900123456-7)' : form.tipo_documento === 'PAS' ? 'Número de pasaporte' : 'Número de documento'}
+                      value={form.numero_documento} onChange={set('numero_documento')} required />
                   </div>
                 </div>
                 <Campo icono="📱" placeholder="Celular" value={form.telefono} onChange={set('telefono')} />
@@ -162,6 +182,10 @@ export default function Login() {
                     {tiposNegocio.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
                   </select>
                 </div>
+                {esTipoOtro && (
+                  <Campo icono="✏️" placeholder="¿A qué se dedica tu negocio? (ej: consultorio médico, tienda de tecnología…)"
+                    value={form.tipo_negocio_otro} onChange={set('tipo_negocio_otro')} required />
+                )}
               </>
             )}
 
@@ -178,7 +202,12 @@ export default function Login() {
                 <Campo icono="🔑" placeholder="Código de 6 dígitos" value={form.codigo}
                   onChange={(e) => setForm({ ...form, codigo: e.target.value.replace(/\D/g, '').slice(0, 6) })}
                   inputMode="numeric" maxLength={6} required />
-                <p className="text-xs text-slate-500">Ese código te lo entrega el administrador de Fénix por WhatsApp o correo.</p>
+                <p className="text-xs text-slate-500">
+                  Te enviamos ese código a tu correo al registrarte.{' '}
+                  <button type="button" onClick={reenviarCodigo} disabled={reenviando} className="text-orange-600 hover:underline disabled:opacity-50">
+                    {reenviando ? 'Enviando…' : '¿No te llegó? Reenviar código'}
+                  </button>
+                </p>
               </>
             )}
 
@@ -220,8 +249,8 @@ export default function Login() {
               onError={(e) => { e.currentTarget.style.display = 'none' }} />
             <h2 className="text-2xl font-extrabold text-white">¡Gracias por elegir a Fénix! 🔥</h2>
             <p className="mt-3 text-sm text-slate-300">
-              Tu cuenta ya está creada. Solo falta un paso: un asesor de Fénix te va a compartir tu
-              código de activación de 6 dígitos para que puedas entrar.
+              Tu cuenta ya está creada. Revisa tu correo: te enviamos un código de 6 dígitos
+              para activarla. Si no lo ves, revisa la carpeta de spam o promociones.
             </p>
             <button onClick={() => setMostrarBienvenida(false)}
               className="mt-6 w-full rounded-xl bg-gradient-to-r from-red-600 via-orange-600 to-amber-500 hover:opacity-95 text-white font-semibold py-2.5 shadow-lg transition">

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
+import { useDialogo } from '../context/DialogoContext'
+import { useToast } from '../context/ToastContext'
 
 const ESTADO_COLOR = {
   ACTIVO: 'bg-emerald-500/15 text-emerald-400',
@@ -20,6 +22,8 @@ export default function Usuarios() {
   const [viendo, setViendo] = useState(null)     // usuario en modal de detalle
   const [eliminando, setEliminando] = useState(null) // usuario en modal de eliminación
   const [openQuick, setOpenQuick] = useState(false)
+  const { confirmar, preguntar, avisar } = useDialogo()
+  const toast = useToast()
 
   async function cargar() {
     setCargando(true); setError('')
@@ -38,24 +42,31 @@ export default function Usuarios() {
 
   async function accion(fn) {
     try { await fn(); await cargar() }
-    catch (err) { alert(err.message || 'Error en la operación.') }
+    catch (err) { toast.error(err.message || 'Error en la operación.') }
   }
 
   const cambiarEstado = (u, estado) => accion(() => api(`/admin/usuarios/${u.id}/estado`, { method: 'POST', body: { estado } }))
   const cambiarPlan = (u, plan_id) => accion(() => api(`/admin/usuarios/${u.id}/plan`, { method: 'POST', body: { plan_id: Number(plan_id) } }))
 
   async function restablecer(u) {
-    if (!confirm(`¿Restablecer la contraseña de ${u.name}?`)) return
+    const ok = await confirmar({ titulo: 'Restablecer contraseña', mensaje: `¿Restablecer la contraseña de ${u.name}?`, confirmarTexto: 'Restablecer' })
+    if (!ok) return
     try {
       const r = await api(`/admin/usuarios/${u.id}/restablecer-password`, { method: 'POST', body: {} })
-      alert(`Contraseña temporal de ${u.name}:\n\n${r.password_temporal}\n\nEntrégasela al usuario.`)
-    } catch (err) { alert(err.message || 'No se pudo restablecer.') }
+      await avisar({ titulo: 'Contraseña temporal', mensaje: `Contraseña temporal de ${u.name}:\n\n${r.password_temporal}\n\nEntrégasela al usuario.` })
+    } catch (err) { toast.error(err.message || 'No se pudo restablecer.') }
   }
 
   async function cambiarLimite(u) {
-    const v = prompt(`Límite manual de clientes para ${u.name} (vacío = usar el del plan):`, u.limite_manual ?? '')
+    const v = await preguntar({ titulo: 'Límite de clientes', mensaje: `Límite manual de clientes para ${u.name} (vacío = usar el del plan):`, valorInicial: u.limite_manual ?? '', numerico: true })
     if (v === null) return
     accion(() => api(`/admin/usuarios/${u.id}/limite`, { method: 'POST', body: { limite_clientes: v === '' ? null : Number(v) } }))
+  }
+
+  async function cambiarLimiteFacturas(u) {
+    const v = await preguntar({ titulo: 'Límite de facturas', mensaje: `Límite manual de facturas para ${u.name} (vacío = usar el del plan; las cotizaciones no cuentan):`, valorInicial: u.limite_facturas_manual ?? '', numerico: true })
+    if (v === null) return
+    accion(() => api(`/admin/usuarios/${u.id}/limite`, { method: 'POST', body: { limite_facturas: v === '' ? null : Number(v) } }))
   }
 
   return (
@@ -88,6 +99,7 @@ export default function Usuarios() {
                 <th className="text-left p-3">Último acceso</th>
                 <th className="text-left p-3">Plan</th>
                 <th className="text-left p-3">Clientes</th>
+                <th className="text-left p-3">Facturas</th>
                 <th className="text-left p-3">Estado</th>
                 <th className="text-right p-3">Acciones</th>
               </tr>
@@ -119,6 +131,14 @@ export default function Usuarios() {
                           {u.clientes_usados} / {u.limite_clientes}
                         </span>}
                     <button onClick={() => cambiarLimite(u)} className="ml-2 text-xs text-sky-400 hover:underline">editar</button>
+                  </td>
+                  <td className="p-3">
+                    {u.facturas_disponibles === null
+                      ? <span className="text-slate-400">∞</span>
+                      : <span className={u.facturas_usadas >= (u.limite_facturas ?? 0) ? 'text-red-400' : 'text-slate-300'}>
+                          {u.facturas_usadas} / {u.limite_facturas}
+                        </span>}
+                    <button onClick={() => cambiarLimiteFacturas(u)} className="ml-2 text-xs text-sky-400 hover:underline">editar</button>
                   </td>
                   <td className="p-3">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${ESTADO_COLOR[u.estado] ?? ''}`}>
@@ -182,6 +202,7 @@ function ModalVer({ usuario: u, onClose }) {
           <Dato label="Correo">{u.email}</Dato>
           <Dato label="Plan">{u.plan?.nombre}</Dato>
           <Dato label="Clientes">{u.clientes_disponibles === null ? `${u.clientes_usados} / ∞` : `${u.clientes_usados} / ${u.limite_clientes}`}</Dato>
+          <Dato label="Facturas">{u.facturas_disponibles === null ? `${u.facturas_usadas} / ∞` : `${u.facturas_usadas} / ${u.limite_facturas}`}</Dato>
           <Dato label="Fecha de registro">{u.fecha_registro ? new Date(u.fecha_registro).toLocaleString('es') : '—'}</Dato>
           <Dato label="Último acceso">{u.ultimo_acceso ? new Date(u.ultimo_acceso).toLocaleString('es') : 'Nunca'}</Dato>
         </div>
@@ -193,21 +214,22 @@ function ModalVer({ usuario: u, onClose }) {
 function ModalEliminar({ usuario, onClose, onEliminado }) {
   const [procesando, setProcesando] = useState(false)
   const [confirmandoPermanente, setConfirmandoPermanente] = useState(false)
+  const toast = useToast()
 
   async function eliminarLogica() {
     setProcesando(true)
     try {
       const r = await api(`/admin/usuarios/${usuario.id}`, { method: 'DELETE' })
-      alert(r.message); onEliminado()
-    } catch (err) { alert(err.message || 'No se pudo eliminar.'); setProcesando(false) }
+      toast.exito(r.message); onEliminado()
+    } catch (err) { toast.error(err.message || 'No se pudo eliminar.'); setProcesando(false) }
   }
 
   async function eliminarPermanente() {
     setProcesando(true)
     try {
       const r = await api(`/admin/usuarios/${usuario.id}/permanente`, { method: 'DELETE' })
-      alert(r.message); onEliminado()
-    } catch (err) { alert(err.message || 'No se pudo eliminar.'); setProcesando(false) }
+      toast.exito(r.message); onEliminado()
+    } catch (err) { toast.error(err.message || 'No se pudo eliminar.'); setProcesando(false) }
   }
 
   return (
@@ -291,12 +313,13 @@ function ModalQuick({ onClose }) {
   const [nombre, setNombre] = useState('')
   const [apellido, setApellido] = useState('')
   const [guardando, setGuardando] = useState(false)
+  const toast = useToast()
   async function guardar(e) {
     e.preventDefault(); setGuardando(true)
     try {
       await api('/equipo/usuarios/quick', { method: 'POST', body: { nombre, apellido } })
       onClose()
-    } catch (err) { alert(err.message || 'No se pudo crear el empleado.'); setGuardando(false) }
+    } catch (err) { toast.error(err.message || 'No se pudo crear el empleado.'); setGuardando(false) }
   }
 
   return (

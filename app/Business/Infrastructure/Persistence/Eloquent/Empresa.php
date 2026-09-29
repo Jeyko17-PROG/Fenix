@@ -2,6 +2,7 @@
 
 namespace App\Business\Infrastructure\Persistence\Eloquent;
 
+use App\Billing\Infrastructure\Persistence\Eloquent\Factura;
 use App\Operations\Infrastructure\Persistence\Eloquent\Cita;
 use App\Operations\Infrastructure\Persistence\Eloquent\Cliente;
 use App\IAM\Infrastructure\Persistence\Eloquent\EmpresaModulo;
@@ -39,6 +40,7 @@ class Empresa extends Model
         'facebook_url',
         'whatsapp_url',
         'tipo_negocio_id',
+        'tipo_negocio_otro',
         'owner_user_id',
         'plan_id',
         'modo_cobro',
@@ -48,6 +50,7 @@ class Empresa extends Model
         'activo',
         'limite_clientes',
         'limite_citas',
+        'limite_facturas',
         'reservas_slug',
     ];
 
@@ -171,7 +174,12 @@ class Empresa extends Model
      */
     public function clientesUsados(): int
     {
-        return Cliente::withoutGlobalScopes()->whereIn('empresa_id', $this->grupoEmpresaIds())->count();
+        // withoutGlobalScope (no plural) para quitar SOLO el filtro multi-tenant:
+        // withoutGlobalScopes() sin argumentos también quitaba el filtro de
+        // soft-delete (SoftDeletingScope), así un cliente eliminado seguía
+        // contando para siempre contra el cupo del plan.
+        return Cliente::withoutGlobalScope(\App\Shared\Infrastructure\Persistence\Scopes\OwnerScope::class)
+            ->whereIn('empresa_id', $this->grupoEmpresaIds())->count();
     }
 
     /** Límite efectivo de citas: override manual o el del plan, de la empresa gobernante del grupo. */
@@ -187,7 +195,33 @@ class Empresa extends Model
     /** Citas registradas por TODO el grupo de negocios vinculados (mismo criterio que clientesUsados()). */
     public function citasUsadas(): int
     {
-        return Cita::withoutGlobalScopes()->whereIn('empresa_id', $this->grupoEmpresaIds())->count();
+        return Cita::withoutGlobalScope(\App\Shared\Infrastructure\Persistence\Scopes\OwnerScope::class)
+            ->whereIn('empresa_id', $this->grupoEmpresaIds())->count();
+    }
+
+    /** Límite efectivo de facturas: override manual o el del plan, de la empresa gobernante del grupo. */
+    public function limiteFacturasEfectivo(): int
+    {
+        $g = $this->empresaGobernante();
+        if (! is_null($g->limite_facturas)) {
+            return (int) $g->limite_facturas;
+        }
+        return (int) ($g->plan?->limite_facturas ?? 0);
+    }
+
+    /**
+     * Facturas EMITIDAS (incluye PAGADA y ANULADA: ya consumieron un folio real)
+     * de TODO el grupo de negocios vinculados. Las cotizaciones (estado BORRADOR)
+     * NO cuentan aquí a propósito: mientras no se confirme el primer abono, una
+     * cotización nunca fue una venta real y no debe consumir el cupo del plan.
+     * Una factura eliminada (soft delete) sale de este conteo y libera cupo.
+     */
+    public function facturasUsadas(): int
+    {
+        return Factura::withoutGlobalScope(\App\Shared\Infrastructure\Persistence\Scopes\OwnerScope::class)
+            ->whereIn('empresa_id', $this->grupoEmpresaIds())
+            ->where('estado', '!=', 'BORRADOR')
+            ->count();
     }
 
     /** Genera (si falta) el slug público único del portal de reservas. */

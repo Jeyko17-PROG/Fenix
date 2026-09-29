@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
+import { useDialogo } from '../context/DialogoContext'
+import { useToast } from '../context/ToastContext'
 import { aNumero, formatearEnVivo } from '../utils/numero'
 
 const MOV_VACIO = { tipo: 'ENTRADA', producto_id: '', cantidad: '', costo_unitario: '', bodega_origen_id: '', bodega_destino_id: '', motivo: '' }
@@ -21,6 +23,8 @@ export default function Inventario() {
   const [editando, setEditando] = useState(null) // { id, cantidad, costo_unitario }
   const [filtroTipo, setFiltroTipo] = useState('')
   const [filtroBodega, setFiltroBodega] = useState('')
+  const { confirmar } = useDialogo()
+  const toast = useToast()
 
   async function cargar(termino = buscar, tipo = filtroTipo, bodegaId = filtroBodega) {
     const qs = termino ? `?buscar=${encodeURIComponent(termino)}` : ''
@@ -28,14 +32,18 @@ export default function Inventario() {
     if (tipo) paramsMov.set('tipo', tipo)
     if (bodegaId) paramsMov.set('bodega_id', bodegaId)
     const qsMov = paramsMov.toString() ? `?${paramsMov.toString()}` : ''
-    const [s, a, m] = await Promise.all([
-      api(`/inventario/stock${qs}`),
-      api('/inventario/alertas'),
-      api(`/inventario/movimientos${qsMov}`),
-    ])
-    setStock(s.data ?? s)
-    setAlertas(a)
-    setMovimientos(m.data ?? m)
+    try {
+      const [s, a, m] = await Promise.all([
+        api(`/inventario/stock${qs}`),
+        api('/inventario/alertas'),
+        api(`/inventario/movimientos${qsMov}`),
+      ])
+      setStock(s.data ?? s)
+      setAlertas(a)
+      setMovimientos(m.data ?? m)
+    } catch (err) {
+      setError(err.message || 'No se pudo cargar el inventario. Verifica que tu plan lo incluya.')
+    }
   }
 
   async function eliminarStock(s) {
@@ -43,12 +51,13 @@ export default function Inventario() {
     const aviso = Number(s.cantidad) > 0
       ? ` Tiene ${Number(s.cantidad).toLocaleString('es-CO')} unidades — se registrará un ajuste en el Kardex antes de borrarlo.`
       : ''
-    if (!confirm(`¿Eliminar el registro de stock de "${nombre}" en ${s.bodega?.nombre}?${aviso} No se puede deshacer.`)) return
+    const ok = await confirmar({ titulo: 'Eliminar stock', mensaje: `¿Eliminar el registro de stock de "${nombre}" en ${s.bodega?.nombre}?${aviso} No se puede deshacer.`, confirmarTexto: 'Eliminar', peligroso: true })
+    if (!ok) return
     try {
       await api(`/inventario/stock/${s.id}`, { method: 'DELETE' })
       cargar()
     } catch (err) {
-      alert(err.message || 'No se pudo eliminar el registro de stock.')
+      toast.error(err.message || 'No se pudo eliminar el registro de stock.')
     }
   }
 
@@ -66,24 +75,29 @@ export default function Inventario() {
       setEditando(null)
       cargar()
     } catch (err) {
-      alert(err.message || 'No se pudo editar la cantidad.')
+      toast.error(err.message || 'No se pudo editar la cantidad.')
     }
   }
 
   async function eliminarMovimiento(m) {
-    if (!confirm(`¿Eliminar este movimiento (${m.tipo} de ${Number(m.cantidad).toLocaleString('es-CO')} × ${m.producto?.nombre})? Esto ajusta el stock de vuelta y no se puede deshacer.`)) return
+    const ok = await confirmar({
+      titulo: 'Eliminar movimiento',
+      mensaje: `¿Eliminar este movimiento (${m.tipo} de ${Number(m.cantidad).toLocaleString('es-CO')} × ${m.producto?.nombre})? Esto ajusta el stock de vuelta y no se puede deshacer.`,
+      confirmarTexto: 'Eliminar', peligroso: true,
+    })
+    if (!ok) return
     try {
       await api(`/inventario/movimientos/${m.id}`, { method: 'DELETE' })
       cargar()
     } catch (err) {
-      alert(err.message || 'No se pudo eliminar el movimiento.')
+      toast.error(err.message || 'No se pudo eliminar el movimiento.')
     }
   }
   useEffect(() => {
     cargar()
-    api('/productos').then((d) => setProductos(d.data ?? d))
-    api('/bodegas').then(setBodegas)
-  }, [])
+    api('/productos').then((d) => setProductos(d.data ?? d)).catch(() => setProductos([]))
+    api('/bodegas').then(setBodegas).catch(() => setBodegas([]))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Vuelve a consultar cada vez que cambia el texto de búsqueda o los filtros
   // de movimientos (con un pequeño debounce para no disparar una petición por tecla).

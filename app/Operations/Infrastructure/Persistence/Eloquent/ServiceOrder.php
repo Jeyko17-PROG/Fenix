@@ -130,9 +130,9 @@ class ServiceOrder extends Model
     /**
      * Genera un número de orden único por inquilino.
      */
-    public static function generarNumeroOrden(int $ownerId): string
+    public static function generarNumeroOrden(int $ownerId, int $offset = 0): string
     {
-        $count = self::where('owner_id', $ownerId)->count() + 1;
+        $count = self::where('owner_id', $ownerId)->count() + 1 + $offset;
         return "SO-" . date('Ymd') . "-" . str_pad($count, 5, '0', STR_PAD_LEFT);
     }
 }

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
 import { useAuth } from '../context/AuthContext'
+import { useDialogo } from '../context/DialogoContext'
+import { useToast } from '../context/ToastContext'
 
 const VACIO = { nombre: '', descripcion: '', categoria_id: '', icono: '', precio: '', duracion_min: 30, activo: true }
 const COP = (n) => '$' + Number(n || 0).toLocaleString('es-CO')
@@ -24,6 +26,8 @@ export default function Servicios() {
   const [subiendoFoto, setSubiendoFoto] = useState(false)
   const [masOpciones, setMasOpciones] = useState(!modoSimple)
   const [abierto, setAbierto] = useState(!modoSimple) // en modo simple, el formulario arranca oculto tras el botón "+ Nuevo"
+  const { confirmar } = useDialogo()
+  const toast = useToast()
 
   async function cargar() {
     try {
@@ -80,7 +84,7 @@ export default function Servicios() {
     try {
       await api(`/servicios/${editando}/galeria/${imagenId}`, { method: 'DELETE' })
       setGaleria((g) => g.filter((f) => f.id !== imagenId))
-    } catch (err) { alert(err.message || 'No se pudo quitar la foto.') }
+    } catch (err) { toast.error(err.message || 'No se pudo quitar la foto.') }
   }
 
   async function guardar(e) {
@@ -104,7 +108,8 @@ export default function Servicios() {
   }
 
   async function eliminar(id) {
-    if (!confirm('¿Eliminar este servicio?')) return
+    const ok = await confirmar({ titulo: 'Eliminar servicio', mensaje: '¿Eliminar este servicio?', confirmarTexto: 'Eliminar', peligroso: true })
+    if (!ok) return
     await api(`/servicios/${id}`, { method: 'DELETE' })
     cargar()
   }

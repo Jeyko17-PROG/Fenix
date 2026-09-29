@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
+import { useDialogo } from '../context/DialogoContext'
+import { useToast } from '../context/ToastContext'
 
 const ESTADO_COLOR = {
   ACTIVO: 'bg-emerald-500/15 text-emerald-400',
@@ -22,6 +24,8 @@ export default function Empresas() {
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState('')
   const [editando, setEditando] = useState(null) // empresa seleccionada para editar, o null
+  const { confirmar, preguntar } = useDialogo()
+  const toast = useToast()
 
   async function cargar() {
     setCargando(true); setError('')
@@ -43,7 +47,7 @@ export default function Empresas() {
 
   async function accion(fn) {
     try { await fn(); await cargar() }
-    catch (err) { alert(err.message || 'Error en la operación.') }
+    catch (err) { toast.error(err.message || 'Error en la operación.') }
   }
 
   const cambiarPlan = (e, plan_id) => accion(() => api(`/admin/empresas/${e.id}/plan`, { method: 'POST', body: { plan_id: Number(plan_id) } }))
@@ -51,9 +55,15 @@ export default function Empresas() {
   const cambiarModoCobro = (e, modo_cobro) => accion(() => api(`/admin/empresas/${e.id}/modo-cobro`, { method: 'POST', body: { modo_cobro } }))
 
   async function cambiarLimite(e) {
-    const v = prompt(`Límite manual de clientes para ${e.nombre} (vacío = usar el del plan):`, e.limite_manual ?? '')
+    const v = await preguntar({ titulo: 'Límite de clientes', mensaje: `Límite manual de clientes para ${e.nombre} (vacío = usar el del plan):`, valorInicial: e.limite_manual ?? '', numerico: true })
     if (v === null) return
     accion(() => api(`/admin/empresas/${e.id}/limite`, { method: 'POST', body: { limite_clientes: v === '' ? null : Number(v) } }))
+  }
+
+  async function cambiarLimiteFacturas(e) {
+    const v = await preguntar({ titulo: 'Límite de facturas', mensaje: `Límite manual de facturas para ${e.nombre} (vacío = usar el del plan; las cotizaciones no cuentan):`, valorInicial: e.limite_facturas_manual ?? '', numerico: true })
+    if (v === null) return
+    accion(() => api(`/admin/empresas/${e.id}/limite`, { method: 'POST', body: { limite_facturas: v === '' ? null : Number(v) } }))
   }
 
   // Fecha manual hasta la que la empresa tiene acceso (activa/extiende sin
@@ -62,23 +72,24 @@ export default function Empresas() {
   // alcanza si esta fecha sigue vencida.
   async function cambiarMembresia(e) {
     const actual = e.membresia_vence_at ? e.membresia_vence_at.slice(0, 10) : ''
-    const v = prompt(`Fecha hasta la que ${e.nombre} tiene acceso (AAAA-MM-DD):`, actual)
+    const v = await preguntar({ titulo: 'Vigencia de la membresía', mensaje: `Fecha hasta la que ${e.nombre} tiene acceso:`, valorInicial: actual, tipoInput: 'date' })
     if (v === null || v === '') return
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) { alert('Formato de fecha inválido. Usa AAAA-MM-DD, ej: 2026-10-15.'); return }
     accion(() => api(`/admin/empresas/${e.id}/membresia`, { method: 'POST', body: { membresia_vence_at: v } }))
   }
 
-  const regenerarCodigo = (e) => {
-    if (!confirm(`¿Generar un nuevo código de activación para ${e.nombre}? El código anterior dejará de funcionar.`)) return
+  const regenerarCodigo = async (e) => {
+    const ok = await confirmar({ titulo: 'Regenerar código', mensaje: `¿Generar un nuevo código de activación para ${e.nombre}? El código anterior dejará de funcionar.`, confirmarTexto: 'Generar' })
+    if (!ok) return
     accion(() => api(`/admin/empresas/${e.id}/regenerar-codigo`, { method: 'POST' }))
   }
 
   async function enviarCodigo(e) {
-    if (!confirm(`¿Enviar el código de activación por correo a ${e.dueno?.email || 'el dueño'}?`)) return
+    const ok = await confirmar({ titulo: 'Enviar código', mensaje: `¿Enviar el código de activación por correo a ${e.dueno?.email || 'el dueño'}?`, confirmarTexto: 'Enviar' })
+    if (!ok) return
     try {
       const r = await api(`/admin/empresas/${e.id}/enviar-codigo`, { method: 'POST' })
-      alert(r.message || 'Código enviado.')
-    } catch (err) { alert(err.message || 'No se pudo enviar el correo.') }
+      toast.exito(r.message || 'Código enviado.')
+    } catch (err) { toast.error(err.message || 'No se pudo enviar el correo.') }
   }
 
   return (
@@ -96,7 +107,7 @@ export default function Empresas() {
 
       {cargando ? <p className="text-slate-500">Cargando…</p> : (
         <div className="overflow-x-auto rounded-xl border border-slate-800">
-          <table className="w-full text-sm min-w-[900px]">
+          <table className="w-full text-sm min-w-[1000px]">
             <thead className="bg-slate-800/60 text-slate-300">
               <tr>
                 <th className="text-left p-3">Empresa</th>
@@ -105,6 +116,7 @@ export default function Empresas() {
                 <th className="text-left p-3">Plan</th>
                 <th className="text-left p-3">Membresía</th>
                 <th className="text-left p-3">Clientes</th>
+                <th className="text-left p-3">Facturas</th>
                 <th className="text-left p-3">Actividad</th>
                 <th className="text-left p-3">Estado</th>
                 <th className="text-right p-3">Acciones</th>
@@ -123,7 +135,10 @@ export default function Empresas() {
                       </p>
                     )}
                   </td>
-                  <td className="p-3 text-slate-400">{e.tipo_negocio?.nombre ?? '—'}</td>
+                  <td className="p-3 text-slate-400">
+                    {e.tipo_negocio?.nombre ?? '—'}
+                    {e.tipo_negocio_otro && <p className="text-xs text-slate-500 italic">"{e.tipo_negocio_otro}"</p>}
+                  </td>
                   <td className="p-3">
                     <p className="text-slate-300">{e.dueno?.name ?? '—'}</p>
                     <p className="text-xs text-slate-500">{e.dueno?.email}</p>
@@ -154,6 +169,12 @@ export default function Empresas() {
                       {e.clientes_usados} / {e.limite_clientes ?? '∞'}
                     </span>
                     <button onClick={() => cambiarLimite(e)} className="ml-2 text-xs text-sky-400 hover:underline">editar</button>
+                  </td>
+                  <td className="p-3">
+                    <span className={e.limite_facturas && e.facturas_usadas >= e.limite_facturas ? 'text-red-400' : 'text-slate-300'}>
+                      {e.facturas_usadas} / {e.limite_facturas ?? '∞'}
+                    </span>
+                    <button onClick={() => cambiarLimiteFacturas(e)} className="ml-2 text-xs text-sky-400 hover:underline">editar</button>
                   </td>
                   <td className="p-3 text-xs text-slate-400">
                     {e.dueno_veces_login ?? 0} inicio(s)
@@ -186,7 +207,7 @@ export default function Empresas() {
                   </td>
                 </tr>
               ))}
-              {empresas.length === 0 && <tr><td colSpan="9" className="p-6 text-center text-slate-500">Sin empresas registradas.</td></tr>}
+              {empresas.length === 0 && <tr><td colSpan="10" className="p-6 text-center text-slate-500">Sin empresas registradas.</td></tr>}
             </tbody>
           </table>
         </div>

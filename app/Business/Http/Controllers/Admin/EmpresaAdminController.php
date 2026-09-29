@@ -39,6 +39,8 @@ class EmpresaAdminController extends Controller
             'email' => $e->email,
             'email_facturacion' => $e->email_facturacion,
             'tipo_negocio' => $e->tipoNegocio?->only(['id', 'clave', 'nombre']),
+            // Cuando el tipo es "otro", esto dice a qué se dedica de verdad (lo escribió el dueño al registrarse).
+            'tipo_negocio_otro' => $e->tipo_negocio_otro,
             'dueno' => $e->owner?->only(['id', 'name', 'email']),
             'dueno_estado' => $e->owner?->estado,
             // Solo visible mientras la cuenta está pendiente de activación
@@ -58,6 +60,9 @@ class EmpresaAdminController extends Controller
             'limite_citas' => $e->limiteCitasEfectivo() ?: null,
             'limite_citas_manual' => $gobernante->limite_citas,
             'citas_usadas' => $e->citasUsadas(),
+            'limite_facturas' => $e->limiteFacturasEfectivo() ?: null,
+            'limite_facturas_manual' => $gobernante->limite_facturas,
+            'facturas_usadas' => $e->facturasUsadas(),
             'fecha_registro' => $e->created_at?->toIso8601String(),
             // Grupo de "Mis negocios": 1 = sin vínculos (comportamiento de siempre).
             'negocios_vinculados' => count($grupoIds),
@@ -231,16 +236,20 @@ class EmpresaAdminController extends Controller
         $owner = $empresa->owner;
         abort_unless($owner && $owner->estado === 'PENDIENTE_ACTIVACION', 422, 'El dueño de esta empresa ya está activo.');
 
+        // Síncrono: el super-admin espera la confirmación de "enviado" en esta
+        // misma petición (ver abort_unless abajo) - si se encolara, quedaría
+        // esperando a un worker que puede no estar corriendo.
         $enviado = app(Notificador::class)->correo(
-            $owner->email,
-            'Tu código de activación — Fénix',
-            '¡Ya casi puedes entrar!',
-            [
+            para: $owner->email,
+            asunto: 'Tu código de activación — Fénix',
+            titulo: '¡Ya casi puedes entrar!',
+            lineas: [
                 "Hola {$owner->name},",
                 'Tu cuenta en Fénix fue aprobada. Usa este código de 6 dígitos en la pantalla de activación para empezar:',
                 $owner->codigo_activacion,
                 'Si no solicitaste esta cuenta, puedes ignorar este mensaje.',
             ],
+            sincrono: true,
         );
 
         abort_unless($enviado, 500, 'No se pudo enviar el correo. Revisa la configuración de correo (MAIL_*) e intenta de nuevo.');
@@ -280,6 +289,7 @@ class EmpresaAdminController extends Controller
         $data = $request->validate([
             'limite_clientes' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'limite_citas' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            'limite_facturas' => ['sometimes', 'nullable', 'integer', 'min:0'],
         ]);
         $gobernante = $empresa->empresaGobernante();
 
@@ -292,6 +302,11 @@ class EmpresaAdminController extends Controller
             $gobernante->update(['limite_citas' => $data['limite_citas'] ?? null]);
             $gobernante->owner?->update(['limite_citas' => $data['limite_citas'] ?? null]); // espejo legado
             Auditoria::registrar($request->user()->id, $gobernante->owner_user_id, 'EMPRESA_LIMITE_CITAS', null, null, (string) ($data['limite_citas'] ?? 'plan'));
+        }
+        if ($request->has('limite_facturas')) {
+            $gobernante->update(['limite_facturas' => $data['limite_facturas'] ?? null]);
+            $gobernante->owner?->update(['limite_facturas' => $data['limite_facturas'] ?? null]); // espejo legado
+            Auditoria::registrar($request->user()->id, $gobernante->owner_user_id, 'EMPRESA_LIMITE_FACTURAS', null, null, (string) ($data['limite_facturas'] ?? 'plan'));
         }
 
         return response()->json($this->serializar($empresa->fresh(['owner', 'plan', 'tipoNegocio'])));

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../api/client'
+import { useDialogo } from '../context/DialogoContext'
 import ReservaGuiada from './ReservaGuiada'
 
 const fmtHora = (iso) => new Date(iso).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })
@@ -382,6 +383,7 @@ function CatalogoProductos({ base }) {
 function MisCitas({ base }) {
   const [email, setEmail] = useState('')
   const [citas, setCitas] = useState(null)
+  const { confirmar } = useDialogo()
 
   async function buscar(e) {
     e.preventDefault()
@@ -389,7 +391,8 @@ function MisCitas({ base }) {
     setCitas(data.citas)
   }
   async function cancelar(id) {
-    if (!confirm('¿Cancelar esta cita?')) return
+    const ok = await confirmar({ titulo: 'Cancelar cita', mensaje: '¿Cancelar esta cita?', confirmarTexto: 'Cancelar cita', peligroso: true })
+    if (!ok) return
     await api(`${base}/citas/${id}/cancelar`, { method: 'POST', body: { email } })
     buscar({ preventDefault() {} })
   }

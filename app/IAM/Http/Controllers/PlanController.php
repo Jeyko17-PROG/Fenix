@@ -40,6 +40,7 @@ class PlanController extends Controller
             'precio_mensual' => ['required', 'integer', 'min:0'],
             'limite_clientes' => ['required', 'integer', 'min:1'],
             'limite_citas' => ['required', 'integer', 'min:1'],
+            'limite_facturas' => ['required', 'integer', 'min:1'],
             'incluye' => ['nullable', 'array'],
             'incluye.*' => ['string'],
             // Funcionalidades activadas por el plan (claves del catálogo).

@@ -24,15 +24,21 @@ class AuthController extends Controller
      */
     public function register(RegistroEmpresaRequest $request): JsonResponse
     {
-        [$user, $vinculados] = $this->crearNegocio($request->validated());
+        [$user, $vinculados, $codigoEnviado] = $this->crearNegocio($request->validated());
 
         // Sin token: la cuenta no puede usarse hasta que se active con el código.
+        // El código ya se envió solo (por correo) al registrarse - no hace
+        // falta esperar a que un asesor lo entregue a mano.
+        $base = $codigoEnviado
+            ? 'Tu cuenta fue creada. Revisa tu correo: te enviamos tu código de activación de 6 dígitos para poder ingresar.'
+            : 'Tu cuenta fue creada. No pudimos enviarte el correo con el código de activación - un asesor de Fénix te lo compartirá en breve.';
+
         return response()->json([
             'pendiente_activacion' => true,
             'email' => $user->email,
             'message' => $vinculados > 0
-                ? "Tu cuenta fue creada. Un asesor de Fénix te compartirá tu código de activación de 6 dígitos para poder ingresar. Como ya tenías otro negocio registrado con el mismo documento, al entrar podrás elegir cuál usar desde \"Mis negocios\"."
-                : 'Tu cuenta fue creada. Un asesor de Fénix te compartirá tu código de activación de 6 dígitos para poder ingresar.',
+                ? $base . ' Como ya tenías otro negocio registrado con el mismo documento, al entrar podrás elegir cuál usar desde "Mis negocios".'
+                : $base,
         ], 201);
     }
 
@@ -48,10 +54,17 @@ class AuthController extends Controller
      * tipo_documento, numero_documento, telefono, email, password,
      * nombre_empresa, tipo_negocio_id.
      *
-     * @return array{0: User, 1: int} el usuario creado y cuántos negocios
-     *   existentes se le vincularon automáticamente (mismo documento).
+     * $enviarCodigoPorCorreo: false para "Mis negocios" → "Crear otro negocio"
+     * (CuentaController::nuevoNegocio) — ese flujo usa un correo interno
+     * sintético (alias +tag del dueño) y a propósito sigue exigiendo que el
+     * super-admin active el negocio a mano ("sin atajos de seguridad", ver
+     * ese controlador); no tiene sentido mandarle ahí el código automático.
+     *
+     * @return array{0: User, 1: int, 2: bool} el usuario creado, cuántos
+     *   negocios existentes se le vincularon automáticamente (mismo
+     *   documento), y si el correo con el código de activación se pudo enviar.
      */
-    public function crearNegocio(array $data): array
+    public function crearNegocio(array $data, bool $enviarCodigoPorCorreo = true): array
     {
         // Todo usuario nuevo es "Usuario": propietario de su propio espacio aislado.
         $rolId = Role::where('nombre', 'Usuario')->value('id')
@@ -90,6 +103,7 @@ class AuthController extends Controller
             'email' => $data['email'],
             'tipo_negocio_id' => $data['tipo_negocio_id']
                 ?? \App\Business\Infrastructure\Persistence\Eloquent\TipoNegocio::where('clave', 'otro')->value('id'),
+            'tipo_negocio_otro' => $data['tipo_negocio_otro'] ?? null,
             'owner_user_id' => $user->id,
             'plan_id' => $planId,
             'modo_cobro' => 'prueba',
@@ -100,10 +114,11 @@ class AuthController extends Controller
 
         $this->prepararEspacioDeTrabajo($user);
         $this->notificarNuevoRegistro($user, $codigoActivacion);
+        $codigoEnviado = $enviarCodigoPorCorreo && $this->enviarCodigoAlCliente($user, $codigoActivacion);
         $this->darBienvenida($user);
         $vinculados = $this->vincularNegociosDelMismoDueno($user);
 
-        return [$user, $vinculados];
+        return [$user, $vinculados, $codigoEnviado];
     }
 
     /**
@@ -175,6 +190,31 @@ class AuthController extends Controller
         return response()->json([
             'user' => $user->load('rol', 'plan'),
             'token' => $token,
+        ]);
+    }
+
+    /**
+     * Reenvía el código de activación por correo, sin necesidad de esperar a
+     * que el super-admin lo haga a mano (ese camino sigue disponible desde su
+     * panel como respaldo). Respuesta siempre neutra - igual que
+     * forgotPassword() - para no revelar si un correo está registrado o no;
+     * la ruta está limitada por throttle para no poder usarse para saturar
+     * de correos una cuenta ajena.
+     */
+    public function reenviarCodigoActivacion(Request $request): JsonResponse
+    {
+        $data = $request->validate(['email' => ['required', 'email']]);
+
+        $user = User::where('email', $data['email'])->where('estado', 'PENDIENTE_ACTIVACION')->first();
+
+        if ($user) {
+            $codigo = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+            $user->forceFill(['codigo_activacion' => $codigo, 'codigo_activacion_intentos' => 0])->save();
+            $this->enviarCodigoAlCliente($user, $codigo);
+        }
+
+        return response()->json([
+            'message' => 'Si el correo tiene una cuenta pendiente de activación, te enviamos un nuevo código.',
         ]);
     }
 
@@ -259,6 +299,34 @@ class AuthController extends Controller
     }
 
     /**
+     * Envía el código de activación DIRECTO al correo del nuevo negocio, sin
+     * esperar a que un asesor lo reenvíe a mano (antes esto era 100% manual:
+     * el super-admin tenía que copiarlo del panel y mandarlo por WhatsApp o
+     * correo). Si falla el envío, la cuenta igual queda creada — el
+     * super-admin puede reenviarlo o regenerarlo desde el panel de Empresas
+     * (mismo botón que ya existía para ese caso de respaldo).
+     */
+    private function enviarCodigoAlCliente(User $user, string $codigo): bool
+    {
+        // Síncrono a propósito: el usuario está esperando este correo en la
+        // pantalla de activación AHORA MISMO. Si se encolara como el resto de
+        // correos y no hubiera un worker (`queue:work`) corriendo, se
+        // quedaría esperando para siempre sin que nadie se diera cuenta.
+        return app(Notificador::class)->correo(
+            para: $user->email,
+            asunto: 'Tu código de activación — Fénix',
+            titulo: '¡Ya casi puedes entrar!',
+            lineas: [
+                "Hola {$user->name},",
+                'Gracias por registrarte en Fénix. Usa este código de 6 dígitos en la pantalla de activación para empezar:',
+                $codigo,
+                'Si no creaste esta cuenta, puedes ignorar este mensaje.',
+            ],
+            sincrono: true,
+        );
+    }
+
+    /**
      * Avisa al Super Administrador (notificación interna + correo opcional) de un nuevo registro.
      */
     private function notificarNuevoRegistro(User $user, string $codigoActivacion): void
@@ -308,7 +376,7 @@ class AuthController extends Controller
 
         if ($user->estado === 'PENDIENTE_ACTIVACION') {
             throw ValidationException::withMessages([
-                'email' => ['Tu cuenta está pendiente de activación. Solicita tu código de 6 dígitos al administrador de Fénix.'],
+                'email' => ['Tu cuenta está pendiente de activación. Revisa el correo que te enviamos con tu código de 6 dígitos, o solicita uno nuevo al administrador de Fénix si no te llegó.'],
             ]);
         }
 

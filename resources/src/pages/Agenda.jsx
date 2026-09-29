@@ -46,6 +46,7 @@ export default function Agenda() {
   const [planes, setPlanes] = useState([])
   const [sucursales, setSucursales] = useState([])
   const [nueva, setNueva] = useState(null) // null | fecha (Date) con la que abrir el formulario
+  const [reprogramando, setReprogramando] = useState(null) // null | la cita a reprogramar
 
   // Rango visible según la vista
   const [desde, hasta] = useMemo(() => {
@@ -152,6 +153,7 @@ export default function Agenda() {
                   <span className={`text-xs rounded-full px-2 py-0.5 ${ESTADO_COLOR[c.estado]}`}>{ESTADO_LABEL[c.estado] ?? c.estado}</span>
                   {!['CANCELADA', 'COMPLETADA'].includes(c.estado) && <>
                     <button onClick={() => accion(c.id, 'confirmar')} className="text-emerald-400 text-sm hover:underline">Confirmar</button>
+                    <button onClick={() => setReprogramando(c)} className="text-sky-400 text-sm hover:underline">Reprogramar</button>
                     <button onClick={() => accion(c.id, 'cancelar')} className="text-red-400 text-sm hover:underline">Cancelar</button>
                   </>}
                 </div>
@@ -161,7 +163,9 @@ export default function Agenda() {
         </div>
       )}
 
-      {/* Vista SEMANA: clic en un día abre el formulario de cita con esa fecha */}
+      {/* Vista SEMANA: clic en el día vacío abre "Nueva cita"; clic en una cita
+          ya agendada salta a la vista Día de ese día para ver/reprogramar/cancelar
+          (ahí están los botones de acción, no duplicados aquí). */}
       {vista === 'semana' && (
         <div className="grid grid-cols-2 md:grid-cols-7 gap-2">
           {Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(fecha), i)).map((d) => (
@@ -169,7 +173,9 @@ export default function Agenda() {
               className="rounded-lg border border-slate-800 bg-slate-800/30 p-2 min-h-28 cursor-pointer hover:border-emerald-600/60 hover:bg-slate-800/60 transition">
               <div className="text-xs text-slate-400 mb-1">{DIAS[d.getDay()]} {d.getDate()}</div>
               {citasDe(d).map((c) => (
-                <div key={c.id} className={`text-xs rounded px-1.5 py-1 mb-1 ${ESTADO_COLOR[c.estado]}`}>
+                <div key={c.id} onClick={(e) => { e.stopPropagation(); setFecha(d); setVista('dia') }}
+                  title="Ver / reprogramar esta cita"
+                  className={`text-xs rounded px-1.5 py-1 mb-1 cursor-pointer hover:opacity-80 ${ESTADO_COLOR[c.estado]}`}>
                   {iconoServicio(c) && `${iconoServicio(c)} `}{fmtHora(c.inicio)} {c.cliente?.nombre_completo}
                 </div>
               ))}
@@ -178,18 +184,83 @@ export default function Agenda() {
         </div>
       )}
 
-      {/* Vista MES: clic en un día abre el formulario de cita con esa fecha */}
-      {vista === 'mes' && <VistaMes fecha={fecha} citas={citas} onDia={(d) => { setFecha(d); setNueva(d) }} />}
+      {/* Vista MES: clic en el día vacío abre "Nueva cita"; clic en una cita salta a Día. */}
+      {vista === 'mes' && (
+        <VistaMes fecha={fecha} citas={citas}
+          onDia={(d) => { setFecha(d); setNueva(d) }}
+          onCita={(c) => { setFecha(new Date(c.inicio)); setVista('dia') }} />
+      )}
 
       {nueva && (
         <NuevaCita clientes={clientes} servicios={servicios} planes={planes} sucursales={sucursales} esLavadero={esLavadero} fechaInicial={nueva}
           onClose={() => setNueva(null)} onCreada={() => { setNueva(null); cargar() }} />
       )}
+      {reprogramando && (
+        <ReprogramarCita cita={reprogramando}
+          onClose={() => setReprogramando(null)} onReprogramada={() => { setReprogramando(null); cargar() }} />
+      )}
     </div>
   )
 }
 
-function VistaMes({ fecha, citas, onDia }) {
+/** Cambiar la fecha/hora de una cita ya creada, reutilizando la misma búsqueda de horarios disponibles que "Nueva cita". */
+function ReprogramarCita({ cita, onClose, onReprogramada }) {
+  const [fecha, setFecha] = useState(ymd(new Date(cita.inicio)))
+  const [slots, setSlots] = useState([])
+  const [buscando, setBuscando] = useState(false)
+  const [error, setError] = useState('')
+  const [guardando, setGuardando] = useState(false)
+
+  useEffect(() => {
+    let cancelado = false
+    setBuscando(true); setError('')
+    const duracionMin = Math.max(1, Math.round((new Date(cita.fin) - new Date(cita.inicio)) / 60000))
+    const filtro = (cita.plan_lavado_id ? `&plan_lavado_id=${cita.plan_lavado_id}` : `&duracion_min=${duracionMin}`) + (cita.bodega_id ? `&bodega_id=${cita.bodega_id}` : '')
+    api(`/citas/disponibilidad?fecha=${fecha}${filtro}`)
+      .then((data) => { if (!cancelado) setSlots(data.slots ?? []) })
+      .catch((err) => { if (!cancelado) { setSlots([]); setError(err.message || 'No se pudo cargar la disponibilidad.') } })
+      .finally(() => { if (!cancelado) setBuscando(false) })
+    return () => { cancelado = true }
+  }, [fecha, cita])
+
+  async function elegir(inicio) {
+    setGuardando(true); setError('')
+    try {
+      await api(`/citas/${cita.id}/reprogramar`, { method: 'POST', body: { inicio } })
+      onReprogramada()
+    } catch (err) { setError(err.message || 'No se pudo reprogramar la cita.') } finally { setGuardando(false) }
+  }
+
+  return (
+    <div onClick={onClose} className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+      <div onClick={(e) => e.stopPropagation()} className="bg-slate-800 rounded-2xl p-6 max-w-md w-full max-h-[85vh] overflow-y-auto">
+        <h2 className="text-xl font-bold mb-1">Reprogramar cita</h2>
+        <p className="text-sm text-slate-400 mb-4">
+          {cita.cliente?.nombre_completo} · antes: {new Date(cita.inicio).toLocaleDateString('es-CO')} {fmtHora(cita.inicio)}
+        </p>
+        {error && <div className="rounded-lg bg-red-500/10 border border-red-500/40 px-3 py-2 text-red-300 text-sm mb-3">{error}</div>}
+        <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="input mb-4" />
+        {buscando && <p className="text-sm text-slate-400">Buscando horarios disponibles…</p>}
+        {!buscando && slots.length === 0 && !error && (
+          <p className="text-sm text-slate-500">No hay horarios disponibles para esta fecha.</p>
+        )}
+        {slots.length > 0 && (
+          <div className="grid grid-cols-3 gap-2">
+            {slots.map((s, i) => (
+              <button key={i} disabled={!s.disponible || guardando} onClick={() => elegir(s.inicio)}
+                className={`text-sm rounded-lg py-2 ${s.disponible ? 'bg-emerald-700 hover:bg-emerald-600' : 'bg-slate-700 opacity-40 cursor-not-allowed line-through'}`}>
+                {fmtHora(s.inicio)}
+              </button>
+            ))}
+          </div>
+        )}
+        <button onClick={onClose} className="mt-4 rounded-lg bg-slate-700 px-4 py-2 text-sm w-full">Cerrar</button>
+      </div>
+    </div>
+  )
+}
+
+function VistaMes({ fecha, citas, onDia, onCita }) {
   const first = new Date(fecha.getFullYear(), fecha.getMonth(), 1)
   const startPad = first.getDay()
   const diasMes = new Date(fecha.getFullYear(), fecha.getMonth() + 1, 0).getDate()
@@ -215,11 +286,13 @@ function VistaMes({ fecha, citas, onDia }) {
                 <div className="mt-1 flex flex-wrap gap-1">
                   {lista.slice(0, 5).map((c) => (
                     iconoServicio(c) ? (
-                      <span key={c.id} title={`${fmtHora(c.inicio)} ${c.cliente?.nombre_completo ?? ''} · ${c.plan_lavado?.nombre ?? c.servicio?.nombre ?? ''}`}
-                        className="text-xs leading-none">{iconoServicio(c)}</span>
+                      <span key={c.id} onClick={(e) => { e.stopPropagation(); onCita(c) }}
+                        title={`${fmtHora(c.inicio)} ${c.cliente?.nombre_completo ?? ''} · ${c.plan_lavado?.nombre ?? c.servicio?.nombre ?? ''} (clic para ver/reprogramar)`}
+                        className="text-xs leading-none cursor-pointer hover:opacity-70">{iconoServicio(c)}</span>
                     ) : (
-                      <span key={c.id} title={`${fmtHora(c.inicio)} ${c.cliente?.nombre_completo ?? ''}`}
-                        className={`h-2 w-2 rounded-full ${ESTADO_COLOR[c.estado]}`} />
+                      <span key={c.id} onClick={(e) => { e.stopPropagation(); onCita(c) }}
+                        title={`${fmtHora(c.inicio)} ${c.cliente?.nombre_completo ?? ''} (clic para ver/reprogramar)`}
+                        className={`h-2 w-2 rounded-full cursor-pointer hover:opacity-70 ${ESTADO_COLOR[c.estado]}`} />
                     )
                   ))}
                   {lista.length > 5 && <span className="text-[10px] text-slate-500">+{lista.length - 5}</span>}

@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import GestorDocumentos from '../components/GestorDocumentos'
 import { useFeatures } from '../context/FeaturesContext'
+import { useDialogo } from '../context/DialogoContext'
+import { useToast } from '../context/ToastContext'
 
 const VACIO = {
   nombre_completo: '', tipo_documento: 'CC', numero_documento: '',
@@ -12,6 +14,8 @@ const ESTADO_COLOR = { ACTIVO: 'bg-emerald-600', POTENCIAL: 'bg-amber-600', INAC
 
 export default function Clientes() {
   const { visible } = useFeatures()
+  const { confirmar } = useDialogo()
+  const toast = useToast()
   const [lista, setLista] = useState([])
   const [buscar, setBuscar] = useState('')
   const [form, setForm] = useState(VACIO)
@@ -22,8 +26,12 @@ export default function Clientes() {
   const [error, setError] = useState('')
 
   async function cargar() {
-    const data = await api(`/clientes${buscar ? `?buscar=${encodeURIComponent(buscar)}` : ''}`)
-    setLista(data.data ?? data)
+    try {
+      const data = await api(`/clientes${buscar ? `?buscar=${encodeURIComponent(buscar)}` : ''}`)
+      setLista(data.data ?? data)
+    } catch (err) {
+      setError(err.message || 'No se pudieron cargar los clientes. Verifica que tu plan lo incluya.')
+    }
   }
   useEffect(() => { cargar() }, []) // eslint-disable-line
 
@@ -31,7 +39,8 @@ export default function Clientes() {
   function editar(c) { setForm({ ...VACIO, ...c }); setEditId(c.id); setError(''); setAbierto(true) }
 
   async function verFicha(id) {
-    setFicha(await api(`/clientes/${id}`))
+    try { setFicha(await api(`/clientes/${id}`)) }
+    catch (err) { toast.error(err.message || 'No se pudo cargar la ficha del cliente.') }
   }
 
   const [limiteAlcanzado, setLimiteAlcanzado] = useState(false)
@@ -49,9 +58,12 @@ export default function Clientes() {
   }
 
   async function eliminar(id) {
-    if (!confirm('¿Eliminar cliente?')) return
-    await api(`/clientes/${id}`, { method: 'DELETE' })
-    cargar()
+    const ok = await confirmar({ titulo: 'Eliminar cliente', mensaje: '¿Eliminar este cliente? Esta acción no se puede deshacer.', confirmarTexto: 'Eliminar', peligroso: true })
+    if (!ok) return
+    try {
+      await api(`/clientes/${id}`, { method: 'DELETE' })
+      cargar()
+    } catch (err) { toast.error(err.message || 'No se pudo eliminar el cliente.') }
   }
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
@@ -67,6 +79,10 @@ export default function Clientes() {
           <button onClick={nuevo} className="rounded-lg bg-emerald-600 hover:bg-emerald-500 px-4 py-2 text-sm font-semibold">+ Nuevo</button>
         </div>
       </div>
+
+      {!abierto && lista.length === 0 && error && (
+        <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm text-red-300">{error}</div>
+      )}
 
       {abierto && (
         <form onSubmit={guardar} className="mb-6 rounded-xl border border-slate-800 bg-slate-800/50 p-5 grid sm:grid-cols-2 gap-3">

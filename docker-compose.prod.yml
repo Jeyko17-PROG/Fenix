@@ -25,6 +25,10 @@ services:
       - logs_data:/var/www/html/storage/logs
     networks:
       - fenix
+      # Red del stack viejo (Logix): solo para que `migrar:logix` pueda
+      # alcanzar su MySQL (LEGACY_DB_HOST=logixmd-db-1). Quitar esta red del
+      # servicio `app` después de completada la migración de datos.
+      - logixmd_logix
 
   db:
     image: postgres:18
@@ -83,3 +87,7 @@ volumes:
 networks:
   fenix:
     driver: bridge
+  # Red externa ya existente del stack de Logix (ver docker-compose.yml de
+  # /root/Logix.MD) — no la crea este compose, solo se conecta a ella.
+  logixmd_logix:
+    external: true

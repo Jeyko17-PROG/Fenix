@@ -139,7 +139,14 @@ class MigrarLogix extends Command
         $filas = $legacy->table('users')->get();
         foreach ($filas as $row) {
             $r = (array) $row;
-            $newId = DB::table('users')->insertGetId([
+
+            // AdminUserSeeder (corre en cada arranque del contenedor) ya crea
+            // algunas de estas cuentas por email (luisgarciab193@gmail.com,
+            // admin@logix.test) — actualiza esa fila con los datos reales de
+            // Logix en vez de intentar duplicarla.
+            $existenteId = DB::table('users')->where('email', $r['email'])->value('id');
+
+            $datos = [
                 'rol_id' => $this->map['roles'][$r['rol_id']] ?? null,
                 'plan_id' => $this->map['plans'][$r['plan_id']] ?? null,
                 'modo_cobro' => $r['modo_cobro'] ?? 'membresia',
@@ -173,7 +180,14 @@ class MigrarLogix extends Command
                 'created_at' => $r['created_at'] ?? now(),
                 'updated_at' => $r['updated_at'] ?? now(),
                 'deleted_at' => $r['deleted_at'] ?? null,
-            ]);
+            ];
+
+            if ($existenteId) {
+                DB::table('users')->where('id', $existenteId)->update($datos);
+                $newId = $existenteId;
+            } else {
+                $newId = DB::table('users')->insertGetId($datos);
+            }
             $this->map['users'][$r['id']] = $newId;
         }
         $this->info('Usuarios migrados: ' . count($filas));
@@ -189,7 +203,12 @@ class MigrarLogix extends Command
                 $this->warn("Empresa vieja id={$r['id']}: owner_user_id={$r['owner_user_id']} no tiene usuario migrado, se omite.");
                 continue;
             }
-            $newId = DB::table('empresas')->insertGetId([
+            // BackfillEmpresas (disparado por AdminUserSeeder en cada arranque)
+            // ya pudo haber creado una empresa placeholder ("Otro negocio")
+            // para este mismo owner_user_id — actualízala con los datos reales.
+            $existenteId = DB::table('empresas')->where('owner_user_id', $ownerNuevo)->value('id');
+
+            $datos = [
                 'nombre' => $r['nombre'],
                 'tipo_documento' => $r['tipo_documento'] ?? null,
                 'numero_documento' => $r['numero_documento'] ?? null,
@@ -220,7 +239,14 @@ class MigrarLogix extends Command
                 'created_at' => $r['created_at'] ?? now(),
                 'updated_at' => $r['updated_at'] ?? now(),
                 'deleted_at' => $r['deleted_at'] ?? null,
-            ]);
+            ];
+
+            if ($existenteId) {
+                DB::table('empresas')->where('id', $existenteId)->update($datos);
+                $newId = $existenteId;
+            } else {
+                $newId = DB::table('empresas')->insertGetId($datos);
+            }
             $this->map['empresas'][$r['id']] = $newId;
         }
         $this->info('Empresas migradas: ' . count($this->map['empresas'] ?? []));

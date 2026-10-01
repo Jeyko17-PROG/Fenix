@@ -49,8 +49,8 @@ RUN composer install --no-interaction --optimize-autoloader --no-dev --no-cache 
 # de Vite (public/build), el service worker del PWA, y el bundle SSR
 # (bootstrap/ssr/*.js) + el node_modules que ese bundle necesita en runtime.
 COPY --from=frontend-build /build/public/build ./public/build
-COPY --from=frontend-build /build/public/sw.js ./public/sw.js
-COPY --from=frontend-build /build/public/workbox-*.js ./public/
+# El plugin VitePWA está desactivado en vite.config.js (comentado) — no genera
+# sw.js/workbox-*.js por ahora. Si se reactiva, agregar de nuevo su COPY aquí.
 COPY --from=frontend-build /build/bootstrap/ssr ./bootstrap/ssr
 COPY --from=frontend-build /build/node_modules ./node_modules
 COPY --from=frontend-build /usr/local/bin/node /usr/local/bin/node

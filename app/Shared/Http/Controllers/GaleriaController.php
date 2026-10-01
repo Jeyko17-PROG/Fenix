@@ -99,12 +99,12 @@ class GaleriaController extends Controller
             404
         );
 
-        // Best-effort: no bloquea el borrado del registro si Cloudinary falla.
+        // Best-effort: no bloquea el borrado del registro si la imagen remota/local falla.
         if ($imagen->public_id) {
             try {
-                (new \Cloudinary\Cloudinary())->uploadApi()->destroy($imagen->public_id);
+                $this->cloudinary->borrar($imagen->public_id);
             } catch (\Throwable $e) {
-                Log::warning('Cloudinary: fallo al borrar foto de galería', ['public_id' => $imagen->public_id, 'error' => $e->getMessage()]);
+                Log::warning('Fallo al borrar foto de galería', ['public_id' => $imagen->public_id, 'error' => $e->getMessage()]);
             }
         }
 

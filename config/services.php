@@ -59,6 +59,13 @@ return [
         'redirect' => env('GOOGLE_REDIRECT_URI'),
     ],
 
+    // Almacenamiento de imágenes (productos, servicios, galerías, logos). Si
+    // CLOUDINARY_URL está vacío, CloudinaryUploader guarda en disco local en
+    // su lugar — ver app/Shared/Infrastructure/CloudinaryUploader.php.
+    'cloudinary' => [
+        'url' => env('CLOUDINARY_URL'),
+    ],
+
     // Pasarela de pagos Wompi (Bancolombia): PSE, Nequi, tarjetas.
     // Las llaves se obtienen en comercios.wompi.co; el dinero se liquida en la
     // cuenta bancaria registrada en el panel de Wompi (no se configura aquí).

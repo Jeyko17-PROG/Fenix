@@ -197,14 +197,25 @@ function Ordenes({ esMecanico, esLavadero, esBarberia, iconoOperario = '👨‍�
   const [vista, setVista] = useState(esLavadero ? 'kanban' : 'lista')
   const toast = useToast()
 
+  // El Kanban (lavadero) necesita TODAS las órdenes abiertas repartidas en sus
+  // columnas, no solo las primeras 15 — trae todas las páginas en la carga.
   const cargar = useCallback(async () => {
     setCargando(true)
     try {
       const p = new URLSearchParams()
       if (estado) p.set('estado', estado)
       if (buscar) p.set('buscar', buscar)
-      const r = await api(`/ordenes-servicio?${p}`)
-      setOrdenes(r.data ?? [])
+      let pagina = 1
+      let todas = []
+      let ultimaPagina = 1
+      do {
+        p.set('page', pagina)
+        const r = await api(`/ordenes-servicio?${p}`)
+        todas = todas.concat(r.data ?? [])
+        ultimaPagina = r.last_page ?? 1
+        pagina++
+      } while (pagina <= ultimaPagina)
+      setOrdenes(todas)
     } catch (err) {
       toast.error(err.message || 'No se pudieron cargar las órdenes de servicio.')
     } finally { setCargando(false) }
@@ -616,7 +627,7 @@ function ModalOrden({ id, esMecanico, onClose }) {
   const cargar = useCallback(() => api(`/ordenes-servicio/${id}`).then(setOrden).catch((e) => { toast.error(e.message); onClose() }), [id, onClose])
   useEffect(() => { cargar() }, [cargar])
   useEffect(() => {
-    api('/productos').then((r) => setProductos(r.data ?? [])).catch(() => {})
+    api('/productos?simple=1').then((r) => setProductos(r.data ?? [])).catch(() => {})
     api('/empleados').then((r) => setEmpleados(r.data ?? [])).catch(() => {})
   }, [])
 

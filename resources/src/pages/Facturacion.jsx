@@ -75,10 +75,21 @@ export default function Facturacion() {
     }
   }, [abierto, ventaRapidaActiva])
 
+  // El backend pagina de a 20; esta pantalla filtra pendientes/pagadas en
+  // memoria sobre la lista completa (ver facturasFiltradas), así que carga
+  // todas las páginas en vez de mostrar solo las primeras 20 facturas.
   async function cargar() {
     try {
-      const data = await api('/facturas')
-      setFacturas(data.data ?? data)
+      let pagina = 1
+      let todas = []
+      let ultimaPagina = 1
+      do {
+        const data = await api(`/facturas?page=${pagina}`)
+        todas = todas.concat(data.data ?? data)
+        ultimaPagina = data.last_page ?? 1
+        pagina++
+      } while (pagina <= ultimaPagina)
+      setFacturas(todas)
     } catch (err) {
       setError(err.message || 'No se pudo cargar la facturación. Verifica que tu plan la incluya.')
     }
@@ -86,7 +97,7 @@ export default function Facturacion() {
   useEffect(() => {
     cargar()
     api('/clientes').then((d) => setClientes(d.data ?? d)).catch((err) => setError(err.message || 'No se pudieron cargar los clientes.'))
-    api('/productos').then((d) => setProductos(d.data ?? d)).catch(() => setProductos([]))
+    api('/productos?simple=1').then((d) => setProductos(d.data ?? d)).catch(() => setProductos([]))
     api('/metodos-pago').then(setMetodosPago).catch(() => setMetodosPago([]))
   }, [])
 

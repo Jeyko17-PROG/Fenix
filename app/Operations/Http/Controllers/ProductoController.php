@@ -17,6 +17,19 @@ class ProductoController extends Controller
 
     public function index(Request $request)
     {
+        // Selector de productos (Facturación, Compras, Inventario, Restaurante,
+        // Taller): esas pantallas necesitan el catálogo COMPLETO para elegir
+        // cualquier producto, no solo los primeros 20 — paginar ahí los dejaba
+        // sin poder seleccionar nada después del producto #20.
+        if ($request->boolean('simple')) {
+            return response()->json([
+                'data' => Producto::where('activo', true)
+                    ->with('stocks') // para que el accessor stock_total no dispare una consulta por producto
+                    ->orderBy('nombre')
+                    ->get(['id', 'sku', 'nombre', 'precio_venta', 'is_service']),
+            ]);
+        }
+
         $buscar = $request->query('buscar');
         $categoriaId = $request->query('categoria_id');
         $filtro = function ($q) use ($buscar, $categoriaId) {

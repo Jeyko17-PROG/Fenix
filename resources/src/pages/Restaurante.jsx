@@ -174,7 +174,7 @@ function ModalComanda({ comandaId, onClose }) {
 
   const cargar = useCallback(() => api(`/comandas/${comandaId}`).then(setComanda).catch(() => {}), [comandaId])
   useEffect(() => { cargar() }, [cargar])
-  useEffect(() => { api('/productos').then((r) => setProductos(r.data ?? [])).catch(() => {}) }, [])
+  useEffect(() => { api('/productos?simple=1').then((r) => setProductos(r.data ?? [])).catch(() => {}) }, [])
 
   function alElegirProducto(pid) {
     const p = productos.find((x) => String(x.id) === String(pid))

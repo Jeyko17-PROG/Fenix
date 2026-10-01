@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client'
+import Paginacion from '../components/Paginacion'
 import { useAuth } from '../context/AuthContext'
 import { useDialogo } from '../context/DialogoContext'
 import { useFeatures } from '../context/FeaturesContext'
@@ -21,22 +22,28 @@ export default function Caja() {
   const [estado, setEstado] = useState(null) // {sesion, ventas, gastos, esperado} | {sesion:null}
   const [utilidad, setUtilidad] = useState(null)
   const [historial, setHistorial] = useState([])
+  const [metaHistorial, setMetaHistorial] = useState(null)
   const [cierre, setCierre] = useState(null) // resultado del cierre (para mostrar el descuadre)
   const [cargando, setCargando] = useState(true)
+
+  const cargarHistorial = useCallback(async (pagina = 1) => {
+    const hist = await api(`/caja/sesiones?page=${pagina}`).catch(() => ({ data: [] }))
+    setHistorial(hist.data ?? [])
+    setMetaHistorial(hist.data ? { current_page: hist.current_page, last_page: hist.last_page, total: hist.total, per_page: hist.per_page } : null)
+  }, [])
 
   const cargar = useCallback(async () => {
     setCargando(true)
     try {
-      const [actual, util, hist] = await Promise.all([
+      const [actual, util] = await Promise.all([
         api('/caja/actual'),
         api('/reportes/utilidad-dia').catch(() => null),
-        api('/caja/sesiones').catch(() => ({ data: [] })),
+        cargarHistorial(1),
       ])
       setEstado(actual)
       setUtilidad(util)
-      setHistorial(hist.data ?? [])
     } finally { setCargando(false) }
-  }, [])
+  }, [cargarHistorial])
 
   useEffect(() => { cargar() }, [cargar])
 
@@ -126,6 +133,7 @@ export default function Caja() {
           </tbody>
         </table>
       </div>
+      <Paginacion meta={metaHistorial} onCambiarPagina={cargarHistorial} />
     </div>
   )
 }

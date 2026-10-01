@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
+import Paginacion from '../components/Paginacion'
 import { useDialogo } from '../context/DialogoContext'
 import { useToast } from '../context/ToastContext'
 import { aNumero } from '../utils/numero'
@@ -8,6 +9,7 @@ export default function Compras() {
   const { confirmar } = useDialogo()
   const toast = useToast()
   const [ordenes, setOrdenes] = useState([])
+  const [meta, setMeta] = useState(null)
   const [proveedores, setProveedores] = useState([])
   const [productos, setProductos] = useState([])
   const [bodegas, setBodegas] = useState([])
@@ -17,16 +19,17 @@ export default function Compras() {
   const [cab, setCab] = useState({ proveedor_id: '', bodega_id: '', fecha: new Date().toISOString().slice(0, 10) })
   const [lineas, setLineas] = useState([{ producto_id: '', cantidad: '', precio_unitario: '' }])
 
-  async function cargar() {
+  async function cargar(pagina = 1) {
     try {
-      const data = await api('/ordenes-compra')
+      const data = await api(`/ordenes-compra?page=${pagina}`)
       setOrdenes(data.data ?? data)
+      setMeta(data.data ? { current_page: data.current_page, last_page: data.last_page, total: data.total, per_page: data.per_page } : null)
     } catch (err) { toast.error(err.message || 'No se pudieron cargar las órdenes de compra.') }
   }
   useEffect(() => {
     cargar()
-    api('/proveedores').then((d) => setProveedores(d.data ?? d)).catch((err) => toast.error(err.message || 'No se pudieron cargar los proveedores.'))
-    api('/productos').then((d) => setProductos(d.data ?? d)).catch(() => setProductos([]))
+    api('/proveedores?simple=1').then((d) => setProveedores(d.data ?? d)).catch((err) => toast.error(err.message || 'No se pudieron cargar los proveedores.'))
+    api('/productos?simple=1').then((d) => setProductos(d.data ?? d)).catch(() => setProductos([]))
     api('/bodegas').then(setBodegas).catch(() => setBodegas([]))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -140,6 +143,7 @@ export default function Compras() {
           </tbody>
         </table>
       </div>
+      <Paginacion meta={meta} onCambiarPagina={cargar} />
     </div>
   )
 }

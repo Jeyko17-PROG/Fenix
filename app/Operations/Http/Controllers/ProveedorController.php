@@ -10,6 +10,14 @@ class ProveedorController extends Controller
 {
     public function index(Request $request)
     {
+        // Selector de proveedores (Compras): necesita la lista completa para
+        // poder elegir cualquiera, no solo los primeros 20.
+        if ($request->boolean('simple')) {
+            return response()->json([
+                'data' => Proveedor::orderBy('razon_social')->get(['id', 'razon_social']),
+            ]);
+        }
+
         $q = Proveedor::query();
         if ($buscar = $request->query('buscar')) {
             $q->where('razon_social', 'like', "%{$buscar}%")

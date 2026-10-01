@@ -95,7 +95,7 @@ export default function Inventario() {
   }
   useEffect(() => {
     cargar()
-    api('/productos').then((d) => setProductos(d.data ?? d)).catch(() => setProductos([]))
+    api('/productos?simple=1').then((d) => setProductos(d.data ?? d)).catch(() => setProductos([]))
     api('/bodegas').then(setBodegas).catch(() => setBodegas([]))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 

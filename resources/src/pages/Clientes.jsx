@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import GestorDocumentos from '../components/GestorDocumentos'
+import Paginacion from '../components/Paginacion'
 import { useFeatures } from '../context/FeaturesContext'
 import { useDialogo } from '../context/DialogoContext'
 import { useToast } from '../context/ToastContext'
@@ -17,6 +18,7 @@ export default function Clientes() {
   const { confirmar } = useDialogo()
   const toast = useToast()
   const [lista, setLista] = useState([])
+  const [meta, setMeta] = useState(null)
   const [buscar, setBuscar] = useState('')
   const [form, setForm] = useState(VACIO)
   const [editId, setEditId] = useState(null)
@@ -25,10 +27,13 @@ export default function Clientes() {
   const [docsDe, setDocsDe] = useState(null)
   const [error, setError] = useState('')
 
-  async function cargar() {
+  async function cargar(pagina = 1) {
     try {
-      const data = await api(`/clientes${buscar ? `?buscar=${encodeURIComponent(buscar)}` : ''}`)
+      const params = new URLSearchParams({ page: pagina })
+      if (buscar) params.set('buscar', buscar)
+      const data = await api(`/clientes?${params}`)
       setLista(data.data ?? data)
+      setMeta(data.data ? { current_page: data.current_page, last_page: data.last_page, total: data.total, per_page: data.per_page } : null)
     } catch (err) {
       setError(err.message || 'No se pudieron cargar los clientes. Verifica que tu plan lo incluya.')
     }
@@ -134,6 +139,7 @@ export default function Clientes() {
           </tbody>
         </table>
       </div>
+      <Paginacion meta={meta} onCambiarPagina={cargar} />
 
       {/* Ficha del cliente */}
       {ficha && (

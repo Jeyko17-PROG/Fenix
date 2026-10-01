@@ -1,18 +1,21 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
+import Paginacion from '../components/Paginacion'
 import { useToast } from '../context/ToastContext'
 
 const COLORES = { PENDIENTE: 'bg-amber-600', FIRMADO: 'bg-emerald-600', RECHAZADO: 'bg-red-600' }
 
 export default function Documentos() {
   const [docs, setDocs] = useState([])
+  const [meta, setMeta] = useState(null)
   const [error, setError] = useState('')
   const toast = useToast()
 
-  async function cargar() {
+  async function cargar(pagina = 1) {
     try {
-      const data = await api('/documentos')
+      const data = await api(`/documentos?page=${pagina}`)
       setDocs(data.data ?? data)
+      setMeta(data.data ? { current_page: data.current_page, last_page: data.last_page, total: data.total, per_page: data.per_page } : null)
     } catch (err) {
       setError(err.message || 'No se pudieron cargar los documentos. Verifica que tu plan lo incluya.')
     }
@@ -71,6 +74,7 @@ export default function Documentos() {
           </tbody>
         </table>
       </div>
+      <Paginacion meta={meta} onCambiarPagina={cargar} />
     </div>
   )
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
+import Paginacion from '../components/Paginacion'
 import { useDialogo } from '../context/DialogoContext'
 import { useToast } from '../context/ToastContext'
 import { aNumero, formatearEnVivo } from '../utils/numero'
@@ -14,6 +15,7 @@ const UNIDADES_MEDIDA = ['UND', 'KG', 'LT', 'MT', 'CAJA', 'PAR', 'DOCENA', 'PAQU
 
 export default function Productos() {
   const [lista, setLista] = useState([])
+  const [meta, setMeta] = useState(null)
   const [categorias, setCategorias] = useState([])
   const [form, setForm] = useState(VACIO)
   const [imagen, setImagen] = useState(null)
@@ -30,14 +32,14 @@ export default function Productos() {
   const { confirmar } = useDialogo()
   const toast = useToast()
 
-  async function cargar(termino = buscar, categoria = categoriaFiltro) {
-    const params = new URLSearchParams()
+  async function cargar(termino = buscar, categoria = categoriaFiltro, pagina = 1) {
+    const params = new URLSearchParams({ page: pagina })
     if (termino) params.set('buscar', termino)
     if (categoria) params.set('categoria_id', categoria)
-    const qs = params.toString() ? `?${params.toString()}` : ''
     try {
-      const data = await api(`/productos${qs}`)
+      const data = await api(`/productos?${params}`)
       setLista(data.data ?? data)
+      setMeta(data.data ? { current_page: data.current_page, last_page: data.last_page, total: data.total, per_page: data.per_page } : null)
       setValorTotalInventario(data.valor_total_inventario ?? 0)
     } catch (err) {
       setError(err.message || 'No se pudieron cargar los productos. Verifica que tu plan lo incluya.')
@@ -319,6 +321,7 @@ export default function Productos() {
           </tbody>
         </table>
       </div>
+      <Paginacion meta={meta} onCambiarPagina={(p) => cargar(buscar, categoriaFiltro, p)} />
     </div>
   )
 }

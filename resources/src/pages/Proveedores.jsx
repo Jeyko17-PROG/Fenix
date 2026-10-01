@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
 import GestorDocumentos from '../components/GestorDocumentos'
+import Paginacion from '../components/Paginacion'
 import { useFeatures } from '../context/FeaturesContext'
 import { useDialogo } from '../context/DialogoContext'
 import { useToast } from '../context/ToastContext'
@@ -13,6 +14,7 @@ const VACIO = {
 export default function Proveedores() {
   const { activa, visible } = useFeatures()
   const [lista, setLista] = useState([])
+  const [meta, setMeta] = useState(null)
   const [form, setForm] = useState(VACIO)
   const [editId, setEditId] = useState(null)
   const [error, setError] = useState('')
@@ -22,10 +24,11 @@ export default function Proveedores() {
   const { confirmar } = useDialogo()
   const toast = useToast()
 
-  async function cargar() {
+  async function cargar(pagina = 1) {
     try {
-      const data = await api('/proveedores')
+      const data = await api(`/proveedores?page=${pagina}`)
       setLista(data.data ?? data)
+      setMeta(data.data ? { current_page: data.current_page, last_page: data.last_page, total: data.total, per_page: data.per_page } : null)
     } catch (err) {
       setError(err.message || 'No se pudieron cargar los proveedores. Verifica que tu plan lo incluya.')
     }
@@ -170,6 +173,7 @@ export default function Proveedores() {
           </tbody>
         </table>
       </div>
+      <Paginacion meta={meta} onCambiarPagina={cargar} />
 
       {docsDe && (
         <GestorDocumentos tipo="proveedor" id={docsDe.id} titulo={docsDe.razon_social} onClose={() => setDocsDe(null)} />

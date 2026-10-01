@@ -32,6 +32,14 @@ if [ ! -f .env ]; then
   cp .env.example .env
   KEY="base64:$(openssl rand -base64 32)"
   sed -i "s|^APP_KEY=.*|APP_KEY=${KEY}|" .env
+  # .env.example trae CLOUDINARY_URL con un valor de EJEMPLO literal
+  # (cloudinary://api_key:api_secret@cloud_name) — si se deja así, el código
+  # lo toma como "configurado de verdad" e intenta subir imágenes a la API
+  # real de Cloudinary con esas credenciales falsas (502/500 en cada subida,
+  # como pasó en este servidor el día que se desplegó por primera vez). Se
+  # deja vacío a propósito: así CloudinaryUploader usa el disco local hasta
+  # que alguien dé de alta una cuenta de Cloudinary real y ponga su URL aquí.
+  sed -i "s|^CLOUDINARY_URL=.*|CLOUDINARY_URL=|" .env
   echo
   echo "!! Se creó .env desde .env.example (con un APP_KEY nuevo)."
   echo "!! Edítalo ahora con los valores reales: DOMAIN, APP_URL, FRONTEND_URL,"

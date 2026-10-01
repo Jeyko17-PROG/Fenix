@@ -36,3 +36,6 @@ Thumbs.db
 # Backups de base de datos: nunca deben vivir en git (datos reales de usuarios).
 *.sql
 backup_*.sql
+
+# Generado por deploy.sh a partir de docker/nginx/app.conf.template.
+/docker/nginx/app.conf

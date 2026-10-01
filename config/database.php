@@ -69,6 +69,23 @@ return [
             ]) : [],
         ],
 
+        // Solo lectura: base MySQL del sistema viejo (Logix), usada una sola vez
+        // por `php artisan migrar:logix` para copiar los datos reales a Postgres.
+        // No se usa en ningún otro lugar de la app — se puede quitar del .env
+        // (y de aquí) después de completar el corte de producción.
+        'mysql_legacy' => [
+            'driver' => 'mysql',
+            'host' => env('LEGACY_DB_HOST', '127.0.0.1'),
+            'port' => env('LEGACY_DB_PORT', '3306'),
+            'database' => env('LEGACY_DB_DATABASE', 'logix'),
+            'username' => env('LEGACY_DB_USERNAME', 'root'),
+            'password' => env('LEGACY_DB_PASSWORD', ''),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'strict' => true,
+        ],
+
         'mariadb' => [
             'driver' => 'mariadb',
             'url' => env('DB_URL'),

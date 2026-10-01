@@ -28,7 +28,12 @@ class AdminUserSeeder extends Seeder
                 'es_super_admin' => true,
             ]
         );
-        User::updateOrCreate(
+        // IMPORTANTE: firstOrCreate, NO updateOrCreate. Esta cuenta fue bloqueada
+        // manualmente por el super-admin (acceso suspendido a pedido del dueño del
+        // negocio). db:seed corre en cada arranque del contenedor (ver start.sh);
+        // con updateOrCreate, cada redeploy reactivaba la cuenta y reseteaba su
+        // contraseña al valor de aquí abajo, anulando el bloqueo de seguridad.
+        User::firstOrCreate(
             ['email' => 'andres52885241@gmail.com'],
             [
                 'name' => 'Andrés Gutiérrez Hurtado',

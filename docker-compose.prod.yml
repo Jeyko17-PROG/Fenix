@@ -1,0 +1,85 @@
+# Stack de producción: nginx (TLS + proxy) -> app (Laravel + Apache + Node
+# para render de PDFs/correos) -> db (Postgres). Solo nginx queda expuesto al
+# host; app y db solo son alcanzables dentro de la red interna `fenix`.
+#
+# Nombre de archivo distinto a docker-compose.yml a propósito: ese otro es
+# solo para desarrollo local (un contenedor Postgres suelto en :5434).
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      # Persiste lo que Storage::disk('public') genera (PDFs de facturas,
+      # órdenes de compra, recibos, adjuntos) entre reinicios/redeploys.
+      - storage_data:/var/www/html/storage/app/public
+      # Persiste storage/logs/laravel.log: sin esto, cada redeploy borraba el
+      # log y era imposible diagnosticar un error reportado tras un redeploy.
+      - logs_data:/var/www/html/storage/logs
+    networks:
+      - fenix
+
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - fenix
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Generado por deploy.sh a partir de docker/nginx/app.conf.template
+      # (sustituye __DOMAIN__). No se versiona.
+      - ./docker/nginx/app.conf:/etc/nginx/conf.d/default.conf:ro
+      - certbot_conf:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
+    networks:
+      - fenix
+
+  certbot:
+    image: certbot/certbot
+    restart: unless-stopped
+    volumes:
+      - certbot_conf:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    # Reintenta la renovación cada 12h (certbot solo renueva de verdad cuando
+    # el certificado está cerca de vencer).
+    entrypoint: >
+      sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done;'
+    networks:
+      - fenix
+
+volumes:
+  db_data:
+  storage_data:
+  logs_data:
+  certbot_conf:
+  certbot_www:
+
+networks:
+  fenix:
+    driver: bridge

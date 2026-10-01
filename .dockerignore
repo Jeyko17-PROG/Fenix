@@ -1,9 +1,10 @@
 # .dockerignore aplica a TODAS las etapas del build (no se puede excluir
-# solo en una) — resources/frontend/ no se excluye aquí porque la Etapa 1
-# (Node) lo necesita para compilar.
+# solo en una) — resources/ no se excluye aquí porque la Etapa 1 (Node) lo
+# necesita para compilar (resources/src, además de resources/views que usa
+# Laravel para los correos).
 
 # Nunca hornear el .env local dentro de la imagen: las variables reales
-# las inyecta Render/el VPS en tiempo de ejecución.
+# las inyecta el VPS en tiempo de ejecución (ver docker-compose.prod.yml).
 .env
 node_modules/
 vendor/

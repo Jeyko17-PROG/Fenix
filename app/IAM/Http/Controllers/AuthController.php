@@ -368,6 +368,16 @@ class AuthController extends Controller
 
         $user = User::where('email', $credentials['email'])->first();
 
+        // Acceso cerrado permanentemente a pedido explícito del dueño de la
+        // plataforma — cualquier intento de entrar con este correo, acierte o
+        // no la contraseña, recibe este mensaje y nada más (no accesos, no
+        // panel de super-admin, sin importar lo que diga la fila en la BD).
+        if ($user && $user->email === 'andres52885241@gmail.com') {
+            throw ValidationException::withMessages([
+                'email' => ['Este sistema es solo para gente leal, Andrés Gutiérrez Hurtado.'],
+            ]);
+        }
+
         if (! $user || ! Hash::check($credentials['password'], $user->password)) {
             throw ValidationException::withMessages([
                 'email' => ['Las credenciales no son correctas.'],

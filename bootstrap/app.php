@@ -19,6 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Normaliza números en formato colombiano (400.000 -> 400000) en campos
         // monetarios de TODA la API, antes de validar.
         $middleware->api(append: [
+            \App\IAM\Http\Middleware\BloquearCuentaVetada::class,
             \App\Shared\Http\Middleware\NormalizarNumerosLocales::class,
         ]);
 

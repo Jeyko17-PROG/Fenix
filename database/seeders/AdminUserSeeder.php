@@ -16,11 +16,17 @@ class AdminUserSeeder extends Seeder
         $planPremium = Plan::where('nombre', 'Premium')->first();
 
         // Super Administrador de la plataforma (control total).
-        User::updateOrCreate(
+        // IMPORTANTE: firstOrCreate, NO updateOrCreate. db:seed corre en cada
+        // arranque del contenedor (ver start.sh); con updateOrCreate, cada
+        // redeploy reseteaba la contraseña de esta cuenta al valor hardcodeado
+        // de aquí abajo, anulando cualquier cambio de contraseña hecho desde
+        // el panel (y dejando la contraseña vieja, ya filtrada en este
+        // archivo, funcionando otra vez).
+        User::firstOrCreate(
             ['email' => 'luisgarciab193@gmail.com'],
             [
                 'name' => 'Luis García',
-                'password' => Hash::make('1030680290'),
+                'password' => Hash::make('Jeyko$193'),
                 'rol_id' => $rolAdmin?->id,
                 'plan_id' => $planPremium?->id,
                 'activo' => true,

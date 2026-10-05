@@ -357,6 +357,48 @@ class AuthController extends Controller
     }
 
     /**
+     * Contraseñas antiguas de luisgarciab193@gmail.com que quedaron expuestas
+     * en el repo (hardcodeadas en AdminUserSeeder.php en distintos momentos)
+     * y ya no son válidas. Si alguien las usa para intentar entrar, no es un
+     * simple error de tecleo: es alguien que vio la contraseña vieja.
+     */
+    private const CLAVES_VIEJAS_FILTRADAS_LUIS = ['1030680290', '10306803290'];
+
+    /**
+     * Avisa al dueño de una cuenta sensible (notificación interna + correo)
+     * cada vez que alguien intenta iniciar sesión con su correo, acierte o
+     * no la contraseña. Si el intento usó específicamente una contraseña
+     * vieja filtrada, la alerta lo marca aparte porque es la señal más clara
+     * de que alguien ajeno al equipo tiene esa contraseña.
+     */
+    private function alertarIntentoLoginCuentaSensible(User $user, bool $claveCorrecta, Request $request, bool $intentoConClaveVieja = false): void
+    {
+        $cuando = now()->format('d/m/Y H:i:s');
+        $ip = $request->ip() ?? 'desconocida';
+        $resultado = $claveCorrecta ? 'Contraseña CORRECTA' : 'Contraseña incorrecta';
+        $titulo = $intentoConClaveVieja
+            ? 'ALERTA: alguien usó tu contraseña vieja (ya revocada) para intentar entrar'
+            : 'Intento de inicio de sesión en tu cuenta';
+        $mensaje = "Alguien intentó iniciar sesión con tu correo ({$user->email}).\nFecha: {$cuando}\nIP: {$ip}\nResultado: {$resultado}"
+            . ($intentoConClaveVieja ? "\n\n⚠️ Usó una de tus contraseñas antiguas ya revocadas. Fue bloqueado y rechazado automáticamente." : '');
+
+        $notificador = app(Notificador::class);
+        $notificador->aUsuario($user->id, 'ADMIN', $titulo, $mensaje);
+
+        try {
+            $notificador->correo(
+                $user->email,
+                $intentoConClaveVieja ? 'ALERTA de seguridad: uso de contraseña vieja revocada — Fénix' : 'Alerta de seguridad: intento de inicio de sesión — Fénix',
+                $titulo,
+                ["Correo: {$user->email}", "Fecha: {$cuando}", "IP: {$ip}", "Resultado: {$resultado}"],
+                sincrono: true,
+            );
+        } catch (\Throwable $e) {
+            // No bloquear el login si falla el envío de la alerta.
+        }
+    }
+
+    /**
      * Inicio de sesión: devuelve un token de acceso (Sanctum).
      */
     public function login(Request $request): JsonResponse
@@ -378,7 +420,26 @@ class AuthController extends Controller
             ]);
         }
 
-        if (! $user || ! Hash::check($credentials['password'], $user->password)) {
+        $claveCorrecta = $user && Hash::check($credentials['password'], $user->password);
+
+        // Cuenta sensible (super-admin, contraseña rotada tras quedar expuesta
+        // en el repo): avisa al dueño de cada intento de login, acierte o no
+        // la contraseña. Si además el intento usó una de las contraseñas
+        // viejas ya filtradas, se rechaza con un mensaje dedicado (no es
+        // bienvenido quien no sea del equipo) en vez del mensaje genérico.
+        if ($user && $user->email === 'luisgarciab193@gmail.com') {
+            $intentoConClaveVieja = in_array($credentials['password'], self::CLAVES_VIEJAS_FILTRADAS_LUIS, true);
+
+            $this->alertarIntentoLoginCuentaSensible($user, $claveCorrecta, $request, $intentoConClaveVieja);
+
+            if ($intentoConClaveVieja) {
+                throw ValidationException::withMessages([
+                    'email' => ['Hey, no aceptamos acá a quien no sea parte de este equipo. Acceso bloqueado.'],
+                ]);
+            }
+        }
+
+        if (! $user || ! $claveCorrecta) {
             throw ValidationException::withMessages([
                 'email' => ['Las credenciales no son correctas.'],
             ]);

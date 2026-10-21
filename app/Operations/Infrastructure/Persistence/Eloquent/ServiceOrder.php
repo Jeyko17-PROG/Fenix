@@ -24,6 +24,7 @@ class ServiceOrder extends Model
         'servicio_id',
         'operables_employee_id',
         'numero_orden',
+        'token_seguimiento',
         'estado',
         'descripcion_trabajo',
         'km_entrada',

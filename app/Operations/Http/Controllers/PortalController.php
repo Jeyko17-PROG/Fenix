@@ -446,6 +446,37 @@ class PortalController extends Controller
         return response()->json(['cliente' => $cliente->nombre_completo, 'citas' => $citas]);
     }
 
+    /**
+     * Seguimiento público de una orden de servicio (destino del QR que se le
+     * entrega al cliente con su vehículo): sin login, identificado solo por
+     * el token aleatorio de la orden, nunca por su id ni su numero_orden
+     * (que es secuencial y adivinable).
+     */
+    public function seguimientoOrden(string $slug, string $token)
+    {
+        $negocio = $this->negocioId($slug);
+
+        $orden = \App\Operations\Infrastructure\Persistence\Eloquent\ServiceOrder::where('owner_id', $negocio)
+            ->where('token_seguimiento', $token)
+            ->with('assetVehicle:id,placa_identificador,marca,modelo,tipo_activo')
+            ->first(['id', 'numero_orden', 'estado', 'cliente_id', 'asset_vehicle_id', 'fecha_recepcion', 'fecha_entrega_estimada', 'fecha_entrega_real']);
+
+        abort_if(! $orden, 404, 'No encontramos esa orden.');
+
+        $cliente = Cliente::find($orden->cliente_id, ['nombre_completo']);
+
+        return response()->json([
+            'numero_orden' => $orden->numero_orden,
+            'estado' => $orden->estado,
+            'estado_label' => $orden->estado_label,
+            'cliente' => $cliente?->nombre_completo,
+            'vehiculo' => $orden->assetVehicle,
+            'fecha_recepcion' => $orden->fecha_recepcion,
+            'fecha_entrega_estimada' => $orden->fecha_entrega_estimada,
+            'fecha_entrega_real' => $orden->fecha_entrega_real,
+        ]);
+    }
+
     /** El cliente cancela su propia cita (verificando el correo). */
     public function cancelar(Request $request, Cita $cita)
     {

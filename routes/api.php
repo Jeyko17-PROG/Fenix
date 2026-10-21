@@ -123,6 +123,8 @@ Route::prefix('publico/{slug}')->group(function () {
     Route::post('reservar', [PortalController::class, 'reservar']);
     Route::get('mis-citas', [PortalController::class, 'misCitas']);
     Route::post('citas/{cita}/cancelar', [PortalController::class, 'cancelar']);
+    // Seguimiento de una orden de servicio (destino del QR entregado con el vehículo).
+    Route::get('orden/{token}', [PortalController::class, 'seguimientoOrden']);
 });
 
 // Compatibilidad: enlace antiguo sin slug → negocio principal.

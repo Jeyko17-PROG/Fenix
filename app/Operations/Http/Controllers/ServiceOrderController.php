@@ -14,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class ServiceOrderController extends Controller
@@ -87,6 +88,10 @@ class ServiceOrderController extends Controller
         $data['owner_id'] = $ownerId;
         $data['estado'] = 'recibido';
         $data['fecha_recepcion'] = now();
+        // Token para el QR público de seguimiento (el cliente ve el estado de
+        // su orden sin login escaneándolo); random y no adivinable, a
+        // diferencia del numero_orden que sí es secuencial y visible.
+        $data['token_seguimiento'] = Str::random(32);
 
         // numero_orden es único por empresa (owner_id), no global: dos empleados de
         // la MISMA empresa creando una orden en el mismo instante podrían calcular

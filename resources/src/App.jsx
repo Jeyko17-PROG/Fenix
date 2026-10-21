@@ -15,6 +15,7 @@ import PlanesLavado from './pages/PlanesLavado'
 import Servicios from './pages/Servicios'
 import Configuracion from './pages/Configuracion'
 import Reserva from './pages/Reserva'
+import Seguimiento from './pages/Seguimiento'
 import QR from './pages/QR'
 import Facturacion from './pages/Facturacion'
 import Taller from './pages/Taller'
@@ -47,6 +48,8 @@ function App() {
       {/* Portal público de reservas (sin login) — destino del QR. Cada usuario tiene su slug. */}
       <Route path="/reservar" element={<Reserva />} />
       <Route path="/reservar/:slug" element={<Reserva />} />
+      {/* Seguimiento público de una orden (sin login) — destino del QR entregado con el vehículo. */}
+      <Route path="/seguimiento/:slug/:token" element={<Seguimiento />} />
 
       {/* Selector "Mis negocios": pantalla completa, sin el menú lateral */}
       <Route path="/mis-negocios" element={<ProtectedRoute><MisNegocios /></ProtectedRoute>} />

@@ -27,6 +27,13 @@ export function getReservasUrl(slug = null) {
   return slug ? `${base}/${slug}` : base
 }
 
+// Enlace de seguimiento de UNA orden puntual (QR que se entrega con el
+// vehículo): a diferencia de getReservasUrl, siempre lleva el slug del
+// negocio y el token propio de la orden.
+export function getSeguimientoUrl(slug, token) {
+  return `${getPublicBaseUrl()}/seguimiento/${slug}/${token}`
+}
+
 // ¿La URL resuelta sigue siendo local (no servirá fuera del computador)?
 export function esUrlLocal(url = getPublicBaseUrl()) {
   return /localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(url)

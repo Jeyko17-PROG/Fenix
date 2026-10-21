@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
+import { QRCodeCanvas } from 'qrcode.react'
 import { api } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { useDialogo } from '../context/DialogoContext'
 import { useToast } from '../context/ToastContext'
 import { aNumero } from '../utils/numero'
+import { getSeguimientoUrl } from '../utils/publicUrl'
 
 const COP = (n) => '$' + Number(n ?? 0).toLocaleString('es-CO')
 
@@ -621,6 +623,7 @@ function ModalOrden({ id, esMecanico, onClose }) {
   const [empleados, setEmpleados] = useState([])
   const [detalle, setDetalle] = useState({ producto_id: '', cantidad: 1, precio_unitario: '', operables_employee_id: '' })
   const [guardando, setGuardando] = useState(false)
+  const [mostrarQr, setMostrarQr] = useState(false)
   const { confirmar } = useDialogo()
   const toast = useToast()
 
@@ -772,6 +775,11 @@ function ModalOrden({ id, esMecanico, onClose }) {
                 {ESTADOS[e].label}
               </button>
             ))}
+            {orden.token_seguimiento && (
+              <button onClick={() => setMostrarQr(true)} className="text-xs rounded-lg bg-slate-700 hover:bg-slate-600 px-3 py-1.5 font-semibold">
+                📱 QR de seguimiento
+              </button>
+            )}
             {avisaVehiculoListo && orden.cliente?.telefono && (
               <a
                 href={urlWhatsAppListo(orden)}
@@ -785,6 +793,10 @@ function ModalOrden({ id, esMecanico, onClose }) {
               ✓ Completar (registra hoja de vida)
             </button>
           </div>
+        )}
+
+        {mostrarQr && (
+          <ModalQrSeguimiento slug={user?.reservas_slug} token={orden.token_seguimiento} onClose={() => setMostrarQr(false)} />
         )}
 
         {/* Detalles: repuestos y mano de obra */}
@@ -860,6 +872,35 @@ function ModalOrden({ id, esMecanico, onClose }) {
             </button>
           </form>
         )}
+      </div>
+    </div>
+  )
+}
+
+// QR de seguimiento de UNA orden: se le muestra/entrega al cliente (ej.
+// pegado al vehículo o mostrado en pantalla) para que vea el estado de su
+// orden escaneando, sin necesidad de llamar ni tener cuenta en el sistema.
+function ModalQrSeguimiento({ slug, token, onClose }) {
+  const url = slug ? getSeguimientoUrl(slug, token) : null
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm p-6 text-center" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-lg font-bold mb-1">QR de seguimiento</h3>
+        <p className="text-sm text-slate-400 mb-4">El cliente escanea y ve el estado de su vehículo, sin login.</p>
+
+        {!slug ? (
+          <p className="text-sm text-amber-300">Configura tu slug de reservas en Perfil para poder generar este QR.</p>
+        ) : (
+          <>
+            <div className="bg-white rounded-xl p-4 w-fit mx-auto">
+              <QRCodeCanvas value={url} size={200} level="M" includeMargin />
+            </div>
+            <input readOnly value={url} onClick={(e) => e.target.select()} className="input mt-4 text-xs" />
+          </>
+        )}
+
+        <button onClick={onClose} className="mt-4 rounded-lg bg-slate-700 hover:bg-slate-600 px-4 py-2 text-sm">Cerrar</button>
       </div>
     </div>
   )

@@ -2,10 +2,14 @@
 
 namespace App\Operations\Http\Controllers;
 
-use App\Shared\Http\Controllers\Controller;
+use App\Business\Infrastructure\Persistence\Eloquent\Bodega;
 use App\Operations\Infrastructure\Persistence\Eloquent\OrdenCompra;
+use App\Operations\Infrastructure\Persistence\Eloquent\Producto;
+use App\Operations\Infrastructure\Persistence\Eloquent\Proveedor;
 use App\Operations\Application\KardexService;
 use App\Shared\Application\Notificador;
+use App\Shared\Http\Controllers\Controller;
+use App\Shared\Rules\ExisteEnEmpresa;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -30,11 +34,11 @@ class OrdenCompraController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'proveedor_id' => ['required', 'exists:proveedores,id'],
-            'bodega_id' => ['required', 'exists:bodegas,id'],
+            'proveedor_id' => ['required', new ExisteEnEmpresa(Proveedor::class)],
+            'bodega_id' => ['required', new ExisteEnEmpresa(Bodega::class)],
             'fecha' => ['required', 'date'],
             'lineas' => ['required', 'array', 'min:1'],
-            'lineas.*.producto_id' => ['required', 'exists:productos,id'],
+            'lineas.*.producto_id' => ['required', new ExisteEnEmpresa(Producto::class)],
             'lineas.*.cantidad' => ['required', 'numeric', 'gt:0'],
             'lineas.*.precio_unitario' => ['required', 'numeric', 'min:0'],
         ]);

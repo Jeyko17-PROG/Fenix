@@ -2,11 +2,14 @@
 
 namespace App\Operations\Http\Controllers;
 
-use App\Shared\Http\Controllers\Controller;
-use App\Shared\Infrastructure\Persistence\Eloquent\Auditoria;
+use App\Business\Infrastructure\Persistence\Eloquent\Bodega;
 use App\Operations\Infrastructure\Persistence\Eloquent\MovimientoInventario;
+use App\Operations\Infrastructure\Persistence\Eloquent\Producto;
 use App\Operations\Infrastructure\Persistence\Eloquent\StockBodega;
 use App\Operations\Application\KardexService;
+use App\Shared\Http\Controllers\Controller;
+use App\Shared\Infrastructure\Persistence\Eloquent\Auditoria;
+use App\Shared\Rules\ExisteEnEmpresa;
 use Illuminate\Http\Request;
 
 class InventarioController extends Controller
@@ -95,8 +98,8 @@ class InventarioController extends Controller
     public function definirMinimo(Request $request)
     {
         $data = $request->validate([
-            'producto_id' => ['required', 'exists:productos,id'],
-            'bodega_id' => ['required', 'exists:bodegas,id'],
+            'producto_id' => ['required', new ExisteEnEmpresa(Producto::class)],
+            'bodega_id' => ['required', new ExisteEnEmpresa(Bodega::class)],
             'stock_minimo' => ['required', 'numeric', 'min:0'],
         ]);
 
@@ -119,12 +122,12 @@ class InventarioController extends Controller
     {
         $data = $request->validate([
             'tipo' => ['required', 'in:ENTRADA,SALIDA,TRASLADO'],
-            'producto_id' => ['required', 'exists:productos,id'],
+            'producto_id' => ['required', new ExisteEnEmpresa(Producto::class)],
             'cantidad' => ['required', 'numeric', 'gt:0'],
             'motivo' => ['nullable', 'string', 'max:50'],
             'costo_unitario' => ['nullable', 'numeric', 'min:0'],
-            'bodega_origen_id' => ['nullable', 'exists:bodegas,id'],
-            'bodega_destino_id' => ['nullable', 'exists:bodegas,id'],
+            'bodega_origen_id' => ['nullable', new ExisteEnEmpresa(Bodega::class)],
+            'bodega_destino_id' => ['nullable', new ExisteEnEmpresa(Bodega::class)],
         ]);
 
         $userId = $request->user()->id;
